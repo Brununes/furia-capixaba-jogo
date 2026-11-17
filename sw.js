@@ -3,7 +3,7 @@
 //  A linha VERSAO abaixo é reescrita por ferramentas/montar-pwa.js com o hash do index.html:
 //  mudou o jogo → muda o sw.js → o navegador instala a versão nova e apaga o cache antigo.
 // ============================================================
-const VERSAO = 'a95410abdd39';
+const VERSAO = '06704f855155';
 const CACHE = 'furia-capixaba-' + VERSAO;
 const ARQUIVOS = ['./', './index.html', './three.min.js', './manifest.webmanifest',
   './icones/icone-192.png', './icones/icone-512.png', './icones/icone-maskable-512.png'];
