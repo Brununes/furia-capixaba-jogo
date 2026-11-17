@@ -1789,8 +1789,11 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
     peca(cab, GEO.cilindro, M('#c0392b'), 0.185, 0.035, 0.185, 0, 0.36, 0, false); }
   if (d.faixaCabeca && est !== 'bandana') {
     const fx = M(d.faixaCabeca);
-    peca(cab, GEO.cilindro, fx, 0.19, 0.05, 0.18, 0, 0.27, 0, false);
-    for (const s of [1, -1]) { const r = peca(cab, GEO.caixa, fx, 0.16, 0.035, 0.03, -0.24, 0.25, s * 0.03, false); r.rotation.z = 0.5 + s * 0.15; }
+    // no afro a faixa dá a volta por fora do cabelo, na linha da testa (do tamanho do afro nessa altura: por dentro ela sumia)
+    const afro = est === 'afro';
+    if (afro) peca(cab, GEO.cilindro, fx, 0.255, 0.055, 0.265, -0.06, 0.2, 0, false);
+    else peca(cab, GEO.cilindro, fx, 0.19, 0.05, 0.18, 0, 0.27, 0, false);
+    for (const s of [1, -1]) { const r = peca(cab, GEO.caixa, fx, 0.16, 0.035, 0.03, afro ? -0.32 : -0.24, afro ? 0.18 : 0.25, s * 0.03, false); r.rotation.z = 0.5 + s * 0.15; }
   }
 }
 
@@ -3175,10 +3178,11 @@ function qCorte(id, d) {
       x, x - (a.x + sx * t), z - (a.z + sz * t), a.x);   // x, distância ao eixo do osso (lado e frente) e lado do osso
     // roupa modelada por cima (roupaQ): debaixo dela fica a pele (o decote e a cava da peça mostram o corpo); a roupa em
     // geometria só completa a canela da calça comprida, abaixo de onde a calça modelada termina
-    if (cob && ((rr === 'camisa' && cob.camisa) || (rr === 'calca' && cob.calca && (cob.calcaM || !(/^calf_/.test(nomes[k]) && t > cob.canela - 0.04))))) {   // calça moderna: abaixo dela, pele (corsário, saia)
+    // (a gravata pintada some sob a camisa modelada: o terno traz a dele)
+    if (cob && (((rr === 'camisa' || rr === 'gravata') && cob.camisa) || (rr === 'calca' && cob.calca && (cob.calcaM || !(/^calf_/.test(nomes[k]) && t > cob.canela - 0.04))))) {   // calça moderna: abaixo dela, pele (corsário, saia)
       // pele que a peça cobre de verdade (pano por cima, pela normal) sai do corpo: senão os triângulos dobram (o teste
       // de peso da cena passava do limite); no decote, na cava e na barra a pele continua
-      rr = qCoberto(rr === 'camisa' ? cob.camisa : cob.calca, x, y, z, N[i * 3] / 127, N[i * 3 + 1] / 127, N[i * 3 + 2] / 127, k) ? 'oculto' : 'pele';
+      rr = qCoberto(rr === 'calca' ? cob.calca : cob.camisa, x, y, z, N[i * 3] / 127, N[i * 3 + 1] / 127, N[i * 3 + 2] / 127, k) ? 'oculto' : 'pele';
     }
     // peça moderna: vem no comprimento dela (manga comprida do moletom, regata, bermuda...): a pele que ela cobre sai,
     // qualquer que seja a região (menos cabeça, mãos e pés)
@@ -3400,6 +3404,7 @@ function qCorPeca(d, peca) {
 // do camponês na cava funda saía serrilhado)
 function qUsaRoupaQ(d, peca) {
   if (!d.roupaQ || !QUATERNIUS.roupas) return false;
+  if (d.roupaQ === 'camisa' || d.roupaQ === 'calca') { if (d.roupaQ !== peca) return false; }   // roupaQ: 'calca' = só a calça modelada (camisa na casca), e vice-versa
   if (peca === 'camisa') return !!d.camisa && d.camisa !== d.pele && !d.semCamisa && !d.regata && !d.macacao && !d.paleto && !d.colete;
   return !!d.calca && d.calca !== d.pele && !d.saia && !d.macacao;
 }
@@ -3555,7 +3560,11 @@ const qParte = k => { if (!Q_PARTE) Q_PARTE = QUATERNIUS.ossos.map((n, i) => /^(
 // esconde o ombro do braço)
 function qCoberto(g, x, y, z, nx, ny, nz, kPele = -1) {
   if (!g) return false;
-  const CEL = 0.06, P = g.attributes.position.array, I = g.index.array, domG = g.userData.dominante, parte = kPele >= 0 ? qParte(kPele) : null;
+  const CEL = 0.06, P = g.attributes.position.array, I = g.index.array, domG = g.userData.dominante;
+  // a peça tem pano nessa parte do corpo (manga no braço)? Então o pano de outra parte em volta também esconde (a costura
+  // da manga com o tronco: sobrava pele atrás do ombro). Sem manga (regata), só o pano colado esconde (a alça não abre o ombro)
+  if (!g.userData.partes) { const s = new Set(); for (let t = 0; t < I.length; t++) s.add(qParte(domG[I[t]])); g.userData.partes = s; }
+  const parte = kPele >= 0 && !g.userData.partes.has(qParte(kPele)) ? qParte(kPele) : null;
   if (!g.userData.gradeTri) { const grade = new Map();   // triângulos por célula (todas as células que a caixa do triângulo toca)
     for (let t = 0; t < I.length; t += 3) { let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9;
       for (let j = 0; j < 3; j++) { const v = I[t + j]; x0 = Math.min(x0, P[v * 3]); x1 = Math.max(x1, P[v * 3]); y0 = Math.min(y0, P[v * 3 + 1]); y1 = Math.max(y1, P[v * 3 + 1]); z0 = Math.min(z0, P[v * 3 + 2]); z1 = Math.max(z1, P[v * 3 + 2]); }
@@ -3566,14 +3575,16 @@ function qCoberto(g, x, y, z, nx, ny, nz, kPele = -1) {
   for (const s of [-0.03, 0.01, 0.045]) {   // células ao longo do raio (também um pouco para dentro: músculo na frente do pano)
     const k = Math.floor((x + nx * s) / CEL) * 1e6 + Math.floor((y + ny * s) / CEL) * 1e3 + Math.floor((z + nz * s) / CEL), l = grade.get(k); if (!l) continue;
     for (const t of l) { if (visto.has(t)) continue; visto.add(t);
-      if (parte !== null && qParte(domG[I[t]]) !== parte && qParte(domG[I[t + 1]]) !== parte && qParte(domG[I[t + 2]]) !== parte) continue;
+      // pano de outra parte do corpo só esconde se estiver colado (2,5 cm): a manga sobre o alto das costas e o tronco
+      // sobre o ombro escondem; a alça da regata, a 3–5 cm do ombro, não
+      const outra = parte !== null && qParte(domG[I[t]]) !== parte && qParte(domG[I[t + 1]]) !== parte && qParte(domG[I[t + 2]]) !== parte;
       // Möller–Trumbore: origem na pele, direção a normal
       const a = I[t] * 3, b = I[t + 1] * 3, c = I[t + 2] * 3;
       const e1x = P[b] - P[a], e1y = P[b + 1] - P[a + 1], e1z = P[b + 2] - P[a + 2], e2x = P[c] - P[a], e2y = P[c + 1] - P[a + 1], e2z = P[c + 2] - P[a + 2];
       const px = ny * e2z - nz * e2y, py = nz * e2x - nx * e2z, pz = nx * e2y - ny * e2x, det = e1x * px + e1y * py + e1z * pz; if (Math.abs(det) < 1e-9) continue;
       const tx = x - P[a], ty = y - P[a + 1], tz = z - P[a + 2], u = (tx * px + ty * py + tz * pz) / det; if (u < 0 || u > 1) continue;
       const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x, v = (nx * qx + ny * qy + nz * qz) / det; if (v < 0 || u + v > 1) continue;
-      const dist = (e2x * qx + e2y * qy + e2z * qz) / det; if (dist > -0.035 && dist < 0.055) return true; } }   // longe demais pegava a alça da regata vindo de lado e abria buraco no ombro
+      const dist = (e2x * qx + e2y * qy + e2z * qz) / det; if (dist > -0.035 && dist < (outra ? 0.025 : 0.055)) return true; } }   // longe demais pegava a alça da regata vindo de lado e abria buraco no ombro
   return false;
 }
 // até onde a calça modelada desce na canela (fração do osso, 0 = joelho): abaixo disso a calça comprida é a de geometria
@@ -4870,7 +4881,7 @@ const POSES_FIGURANTE = {
   remo:     { aF: -0.15, eF: 1.9, abF: 0.65, torcaoF: -1.4, maoB: 1, falaB: 1 },             // remo apoiado no ombro, a mão ao lado da cabeça (Kauê)
   apontando: { aF: 0.9, eF: 0.05, abF: 1.5, aB: -0.3, eB: 1.7, abB: 0.85, torcaoB: -1.5, maoF: 2, maoB: 1, falaF: 0.6 },   // aponta para a rua, na diagonal, e a outra mão na cintura (Rafaela)
   selfie:   { aF: 0.5, eF: 0.3, abF: 2.4, torcaoF: 1.5, aB: 0.35, eB: 1.3, abB: 0.4, maoB: 1, falaB: 1 },   // pau de selfie erguido e a outra mão aberta, gesticulando (Lalinha)
-  maosAtras: { aF: -0.3, eF: 1.75, abF: -0.3, aB: -0.3, eB: 1.75, abB: -0.3, torcaoF: 0.8, torcaoB: -0.8, maoF: 1, maoB: 1,   // mãos para trás, nas costas (governador)
+  maosAtras: { aF: -0.3, eF: 1.75, abF: -0.3, aB: -0.3, eB: 1.75, abB: -0.3, torcaoF: 1.5, torcaoB: -1.5, maoF: 1, maoB: 1,   // mãos para trás, nas costas (governador; ±0,8 só servia para a caixa do paletó antigo: com o terno modelado os antebraços atravessavam o tronco)
     saiA: 0.55, saiE: 1.35, saiAb: 0.25, saiTorcao: 0 }   // ao falar, a mão da frente sai das costas e gesticula
 };
 const ALVO_SENTADO = {};   // rascunho da pose sentada (POSE_SENTADO é constante: não pode receber a respiração)
@@ -5771,7 +5782,9 @@ Object.assign(DB.herois, {
     desc: 'Kickboxing. Rápida, chutes altos. De Cachoeiro de Itapemirim.',
     vel: 5.0, hp: 90, forca: 0.9, pulo: 12.5, velGolpe: 1.25, ginga: false,
     combo: ['jab', 'jab2', 'gancho', 'martelo2'], combos: COMBOS_KICKBOXING, especial: 'giratorio', aereo: 'voadora',
-    visual: { roupaQ: true, pele: '#5e3a22', camisa: '#8e44ad', calca: '#e8333a', short: true, sapato: '#5e3a22', luva: '#e8333a', estilo: 'afro', cabelo: '#120c08', faixaCabeca: '#ffd21f', feminino: true, larg: 0.9 }
+    // regata roxa de costas nadador (regata + debrum da mesma cor), short de luta vermelho, luvas/bandagens vermelhas, descalça.
+    // Sem roupaQ: não há regata nem short de mulher modelados (o short do camponês saía com a barra rasgada)
+    visual: { pele: '#5e3a22', camisa: '#5e2a7a', regata: true, debrum: '#5e2a7a', calca: '#951820', short: true, shortAte: 0.35, calcaLarga: 0.6, sapato: '#5e3a22', luva: '#951820', estilo: 'afro', cabelo: '#120c08', faixaCabeca: '#ffd21f', feminino: true, larg: 0.9 }
   },
   hanz: {
     nome: 'HANZ', curto: 'Hanz', emoji: '🤼', cor: '#1f6fd8',
@@ -5779,7 +5792,7 @@ Object.assign(DB.herois, {
     vel: 3.6, hp: 125, forca: 1.35, pulo: 10, velGolpe: 0.85, ginga: false,
     combo: ['jab', 'jab2', 'antebraco', 'marretada'], combos: COMBOS_LUTA_LIVRE, especial: 'arremetida', aereo: 'voadora',
     // macacão de luta azul (peça única, debrum branco no decote, na cava e na barra, listra branca do lado), meião até o joelho, bota de luta de cano alto, sorrindo
-    visual: { pele: '#d4926a', camisa: '#1f6fd8', macacao: true, debrum: '#f4f1e8', listraLado: '#f4f1e8', calca: '#1f6fd8', short: true, shortAte: 0.5, meiao: '#1f6fd8', meiaoDe: 0.12, sapato: '#1b1b1b', bota: true, estilo: 'curto', cabelo: '#c99d4c', barba: true, olhos: '#3f7fc4', sorriso: true, musculo: 1.35, sola: '#1b1b1b', larg: 1.1, escala: 1.08 }
+    visual: { pele: '#c8805a', camisa: '#1a5ec4', macacao: true, debrum: '#f4f1e8', listraLado: '#f4f1e8', calca: '#1a5ec4', short: true, shortAte: 0.5, meiao: '#1a5ec4', meiaoDe: 0.12, sapato: '#1b1b1b', bota: true, estilo: 'curto', cabelo: '#b8893a', barba: true, olhos: '#3f7fc4', sorriso: true, musculo: 1.35, sola: '#1b1b1b', larg: 1.1, escala: 1.08 }
   },
   cleitinho: {
     nome: 'CLEITINHO', curto: 'Cleitinho', emoji: '🤸🏾', cor: '#19b34a',
@@ -5788,7 +5801,8 @@ Object.assign(DB.herois, {
     combo: ['jab', 'jab2', 'gancho', 'chute'], combos: COMBOS_CAPOEIRA, especial: 'meialua', aereo: 'voadora',
     // camiseta amarela, calça de abadá branca e larga, corda verde com as pontas e as borlas caindo, descalço,
     // twists no alto com as laterais em degradê, pulseira vermelha só no pulso direito, sorriso malandro
-    visual: { roupaQ: true, pele: '#7a4a2a', camisa: '#ffd21f', manga: true, mangaAte: 0.5, calca: '#f4f1e8', calcaLarga: 1, sapato: '#7a4a2a', faixa: '#178a3c', pontasFaixa: true, estilo: 'dreadAlto', cabelo: '#1a1410', pulseira: '#e8333a', pulseiraSo: 'direito', sorriso: true, larg: 0.9 }
+    // roupa modelada: camiseta e a calça social (perna larga e reta até o tornozelo = abadá)
+    visual: { roupaQ: true, modeloCamisa: 'camiseta', modeloCalca: 'social', pele: '#7a4a2a', camisa: '#d09a00', manga: true, mangaAte: 0.5, calca: '#f4f1e8', calcaLarga: 1, sapato: '#7a4a2a', faixa: '#12702f', pontasFaixa: true, estilo: 'dreadAlto', cabelo: '#1a1410', pulseira: '#e8333a', pulseiraSo: 'direito', sorriso: true, larg: 0.9 }
   },
   enzo: {
     nome: 'ENZO', curto: 'Enzo', emoji: '🛸', cor: '#18c1e8',
@@ -5797,7 +5811,8 @@ Object.assign(DB.herois, {
     combo: ['jab', 'jab2', 'gancho', 'chute'], combos: COMBOS_BASICO, especial: 'pulsoEletrico', aereo: 'voadora',
     // camiseta preta de manga comprida com a gola fina e a listra de fora da manga em ciano, calça azul-marinho reta,
     // tênis branco, topete castanho bagunçado com as laterais curtas, óculos de aro preto, relógio inteligente no pulso esquerdo, sorrindo
-    visual: { pele: '#c47f52', camisa: '#22252b', listraManga: '#18c1e8', debrum: '#18c1e8', debrumSo: 'gola', manga: true, mangaLonga: true, calca: '#1c2750', calcaLarga: 0.6, sapato: '#f4f1e8', estilo: 'topete', cabelo: '#5e3518', oculos: 'grau', larg: 0.9, corLente: '#7fe3f5', olhos: '#2a8fb0', pulseira: '#1b1b1b', pulseiraSo: 'esquerdo', relogio: '#2fe0ff', sorriso: true }
+    // sem roupaQ: o moletom modelado tem gola alta e esconde a listra da manga; camiseta solta (camisaSolta) por cima da calça
+    visual: { pele: '#c47f52', camisa: '#22252b', camisaSolta: true, listraManga: '#18c1e8', debrum: '#18c1e8', debrumSo: 'gola', manga: true, mangaLonga: true, calca: '#1c2750', calcaLarga: 0.6, sapato: '#f4f1e8', estilo: 'topete', cabelo: '#5e3518', oculos: 'grau', larg: 0.9, corLente: '#7fe3f5', olhos: '#2a8fb0', pulseira: '#1b1b1b', pulseiraSo: 'esquerdo', relogio: '#2fe0ff', sorriso: true }
   }
 });
 
@@ -5832,7 +5847,8 @@ Object.assign(DB.inimigos, {
     corpos: [CORPOS.baixinho, CORPOS.magrelo, CORPOS.normal, CORPOS.normal, CORPOS.alto, CORPOS.gordinho, CORPOS.parrudo],
     // 1º = a foto: pardo, boné preto, camiseta vermelha solta por cima do jeans largo, tênis branco. Os outros: a mesma
     // camiseta solta (lisa ou listrada) e calça larga, variando a cor, o cabelo e o biotipo. Roupa modelada (roupaQ),
-    // cada um num modelo (modeloCamisa: camiseta, regata, moletom, colete, obra, social; modeloCalca: jeans, rasgada, obra, social; listras)
+    // cada um num modelo (modeloCamisa: camiseta, regata, moletom, colete, obra, social; modeloCalca: jeans, rasgada, obra, social; listras).
+    // O de dread fica sem camisa, na bermuda da casca: a bermuda modelada sem camisa mostrava dentes na cintura
     visuais: [{ roupaQ: true, pele: '#94572f', camisa: '#b02a22', camisaSolta: true, calca: '#2c3e70', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'bone', corBone: '#1e1e1e', cabelo: '#141010', bravo: true, sapato: '#ece8dc', manga: true, mangaAte: 0.5 },
               { roupaQ: true, modeloCamisa: 'regata', pele: '#7a4a2a', camisa: '#2d2d2d', camisaSolta: true, calca: '#56606b', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'curto', bravo: true, sapato: '#1b1b1b', manga: true, mangaAte: 0.5 },
               { roupaQ: true, modeloCamisa: 'moletom', pele: '#c48a5e', camisa: '#d0681a', camisaSolta: true, calca: '#3b3b3b', calcaLarga: 0.9, estilo: 'bone', corBone: '#c42a2a', bravo: true, sapato: '#2e6fb8', manga: true, mangaAte: 0.5 },
@@ -5841,33 +5857,37 @@ Object.assign(DB.inimigos, {
               { pele: '#8d5a3b', semCamisa: true, camisa: '#8d5a3b', calca: '#c0392b', short: true, estilo: 'dread', cabelo: '#1a1410', bravo: true, sapato: '#222' },
               // gente de todo tipo no bando: pardo, amarelo, de cabelo comprido e o coroa grisalho
               { roupaQ: true, modeloCamisa: 'obra', modeloCalca: 'obra', pele: '#b98a5e', camisa: '#4b5320', camisaSolta: true, calca: '#2c3e70', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'curto', cabelo: '#2a1a10', bigode: true, bravo: true, sapato: '#6b4226', manga: true },
-              { roupaQ: true, modeloCamisa: 'regata', pele: '#d9b48a', camisa: '#1b1b1b', estampaCamisa: 'listras', camisaSolta: true, calca: '#3b3b3b', calcaLarga: 0.9, estilo: 'curto', cabelo: '#0d0d0d', bravo: true, sapato: '#f4f1e8', manga: true, mangaAte: 0.5 },
-              { roupaQ: true, modeloCamisa: 'colete', modeloCalca: 'rasgada', pele: '#a8693e', camisa: '#7f1d1d', camisaSolta: true, calca: '#1b2a4a', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'longo', cabelo: '#0d0d0d', bravo: true, sapato: '#222', manga: true, mangaAte: 0.5 },
+              { roupaQ: true, modeloCamisa: 'regata', modeloCalca: 'social', pele: '#d9b48a', camisa: '#1b1b1b', estampaCamisa: 'listras', camisaSolta: true, calca: '#3b3b3b', calcaLarga: 0.9, estilo: 'curto', cabelo: '#0d0d0d', bravo: true, sapato: '#f4f1e8', manga: true, mangaAte: 0.5 },
+              { roupaQ: true, modeloCamisa: 'colete', pele: '#a8693e', camisa: '#7f1d1d', camisaSolta: true, calca: '#1b2a4a', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'longo', cabelo: '#0d0d0d', bravo: true, sapato: '#222', manga: true, mangaAte: 0.5 },
               { roupaQ: true, modeloCamisa: 'social', modeloCalca: 'social', pele: '#c99a72', camisa: '#56606b', camisaSolta: true, manga: true, mangaAte: 0.5, calca: '#3b3b3b', calcaLarga: 0.9, estilo: 'careca', cabelo: '#d8d8d8', bigode: true, barriga: 1.2, bravo: true, sapato: '#3b2412' }]
   },
   ligeiro: {
     hp: 26, vel: 4.1, golpes: ['soco', 'rasteira', 'rasteira'], pontos: 150, reacao: [0.25, 0.6],
     corpos: [CORPOS.baixinho, CORPOS.baixinho, CORPOS.magrelo, CORPOS.normal],
     // 1º = a foto: moicano amarelo espetado com as laterais raspadas, argola na orelha, sorriso de deboche, regata verde-água
-    // solta, bermuda amarela larga e descalço. Os outros: a mesma regata e bermuda, com bandana ou boné
-    visuais: [{ pele: '#8f5530', camisa: '#0f7a6a', regata: true, debrum: '#0f7a6a', camisaSolta: true, calca: '#c88a0a', short: true, shortAte: 0.85, estilo: 'moicano', crista: 1.7, laterais: '#3a2416', sobrancelhaEscura: true, cabelo: '#e0b012', brincos: '#c8ccd2', sorriso: true, bravo: true, larg: 0.85 },
-              { pele: '#c68a5a', camisa: '#c8327e', estampaCamisa: 'listras', regata: true, debrum: '#c8327e', camisaSolta: true, calca: '#222', short: true, shortAte: 0.85, estilo: 'bandana', faixaCabeca: '#c8327e', bravo: true, larg: 0.85 },
-              { pele: '#6e4428', camisa: '#e8b818', regata: true, debrum: '#e8b818', camisaSolta: true, calca: '#1f4fd8', short: true, shortAte: 0.85, estilo: 'bone', corBone: '#19963e', sorriso: true, bravo: true, larg: 0.85, meiao: '#f4f1e8' },
+    // de cava funda, bermuda amarela larga e descalço. Roupa modelada (roupaQ), um modelo por variação: regata (a foto),
+    // colete aberto por cima da camiseta branca (bandana), moletom (boné) e camiseta (o playboy); bermuda em todos
+    visuais: [{ roupaQ: true, modeloCamisa: 'regata', pele: '#8f5530', camisa: '#0f7a6a', calca: '#c88a0a', short: true, shortAte: 0.85, estilo: 'moicano', crista: 1.7, laterais: '#3a2416', sobrancelhaEscura: true, cabelo: '#e0b012', brincos: '#c8ccd2', sorriso: true, bravo: true, larg: 0.85 },
+              { roupaQ: true, modeloCamisa: 'colete', pele: '#c68a5a', camisa: '#a8286a', calca: '#222', short: true, shortAte: 0.85, estilo: 'bandana', faixaCabeca: '#c8327e', bravo: true, larg: 0.85 },
+              { roupaQ: true, modeloCamisa: 'moletom', pele: '#6e4428', camisa: '#d8a810', calca: '#1f4fd8', short: true, shortAte: 0.85, estilo: 'bone', corBone: '#19963e', sorriso: true, bravo: true, larg: 0.85, meiao: '#f4f1e8' },
               // o playboy contratado pelo bando: camisa polo, bermuda e topete
-              { pele: '#f0c8a6', camisa: '#ff7ab8', gola: '#f4f1e8', calca: '#e8d8b0', short: true, estilo: 'topete', cabelo: '#c9a050', oculos: true, bravo: true, larg: 0.85, sapato: '#f4f1e8', manga: true, mangaAte: 0.45 }]
+              { roupaQ: true, modeloCamisa: 'camiseta', pele: '#f0c8a6', camisa: '#e8609e', calca: '#d8c8a0', short: true, estilo: 'topete', cabelo: '#c9a050', oculos: true, bravo: true, larg: 0.85, sapato: '#f4f1e8', manga: true, mangaAte: 0.45 }]
   },
   brutamontes: {
     hp: 85, vel: 1.7, golpes: ['socao'], pontos: 300, armadura: true, reacao: [0.5, 1.1],
     corpos: [CORPOS.normal, CORPOS.alto, CORPOS.gordinho, CORPOS.parrudo],
+    // careca, calça camuflada, corrente e coturno. A calça camuflada fica na casca (a modelada ainda não leva estampa);
+    // o 2º veste roupa modelada: camiseta vinho e a calça cargo de obra (joelheiras) verde-oliva enfiada no coturno
     visuais: [{ pele: '#6b4226', camisa: '#1b1b1b', calca: '#4b5320', estampaCalca: 'camuflado', estilo: 'careca', oculos: true, corrente: true, corCorrente: '#c8ccd2', bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', larg: 1.3, escala: 1.22, barriga: 1.1 },
-              { pele: '#c08050', camisa: '#7f1d1d', calca: '#4b5320', estampaCalca: 'camuflado', estilo: 'careca', barba: true, corrente: true, bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', larg: 1.3, escala: 1.22 },
+              { roupaQ: true, modeloCamisa: 'camiseta', modeloCalca: 'obra', pele: '#c08050', camisa: '#5e1616', calca: '#4b5320', bota: true, botaDe: 0.55, estilo: 'careca', barba: true, corrente: true, bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', larg: 1.3, escala: 1.22 },
               { pele: '#4a2c1a', semCamisa: true, camisa: '#4a2c1a', calca: '#3b3b3b', estampaCalca: 'camuflado', estilo: 'careca', cabelo: '#111', barba: true, corrente: true, bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', larg: 1.3, escala: 1.22 }]
   },
   coqueiro: {
     hp: 30, vel: 2.7, golpes: ['arremesso'], pontos: 200, distante: true, reacao: [1.3, 2.2],
     corpos: [CORPOS.baixinho, CORPOS.normal, CORPOS.gordinho, CORPOS.magrelo],
     // 1º = a foto: camisa verde de hibiscos vermelhos aberta no peito (solta, gola aberta), bermuda creme, chapéu de palha
-    // dourada de fita vermelha, sorriso e pé descalço. Os outros: a mesma camisa florida aberta e o chapéu, variando a cor
+    // dourada de fita vermelha, sorriso e pé descalço. Os outros: a mesma camisa florida aberta e o chapéu, variando a cor.
+    // Na casca (sem roupaQ): a roupa modelada ainda não leva estampa nem abre a gola
     visuais: [{ pele: '#9a6038', camisa: '#1d7a2e', estampaCamisa: 'havaiana', camisaSolta: true, golaAberta: true, manga: true, mangaAte: 0.55, calca: '#cfc0a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', cabelo: '#141010', sorriso: true, bravo: true },
               { pele: '#6e4428', camisa: '#2a78b8', estampaCamisa: 'floral', camisaSolta: true, golaAberta: true, manga: true, mangaAte: 0.55, calca: '#d8d8d0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', sorriso: true, bravo: true },
               { pele: '#c48a5e', camisa: '#d0681a', estampaCamisa: 'floral', camisaSolta: true, golaAberta: true, manga: true, mangaAte: 0.55, calca: '#d8c8a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', barba: true, cabelo: '#5a3a22', bravo: true }]
@@ -5885,18 +5905,22 @@ Object.assign(DB.inimigos, {
   bigorna: {   // Cap. 1 · Vitória
     chefe: true, nome: 'BIGORNA', curto: 'Bigorna', emoji: '🔨', cor: '#8a8f98',
     hp: 260, vel: 2.2, golpes: ['socao', 'soco', 'investida', 'investida'], pontos: 3000, armadura: true, reacao: [0.45, 0.95],
+    // na casca: a calça cargo camuflada é o que mais marca a foto e a roupa modelada ainda não leva estampa
     visuais: [{ pele: '#74462a', camisa: '#1b1b1b', manga: true, mangaAte: 0.55, calca: '#4b5320', estampaCalca: 'camuflado', calcaLarga: 0.8, bota: true, botaDe: 0.55, sapato: '#1b1b1b', sola: '#111111', estilo: 'careca', barba: true, cabelo: '#111', corrente: true, corCorrente: '#c99a2e', bravo: true, musculo: 1.25, larg: 1.45, escala: 1.4, barriga: 1.1 }]
   },
   corrente: {   // Cap. 2 · Terceira Ponte
     chefe: true, nome: 'CORRENTE', curto: 'Corrente', emoji: '⛓️', cor: '#e8333a',
     hp: 280, vel: 3.1, golpes: ['correntada', 'correntada', 'investida', 'soco'], pontos: 3500, armadura: true, reacao: [0.35, 0.8],
-    visuais: [{ pele: '#8e5634', camisa: '#1a1a1a', manga: true, mangaLonga: true, colete: '#5a3422', calca: '#1c1a1a', calcaLarga: 0.7, cinto: '#2a1a12', bota: true, botaDe: 0.4, sapato: '#5a3420', sola: '#2a1a12', estilo: 'bandana', rabo: true, cabelo: '#120c08', faixaCabeca: '#c4202a', oculos: true, brincos: '#b8bcc4', corrente: true, corCorrente: '#6a7078', pulseira: '#6e737b', feminino: true, sorriso: true, larg: 1.05, escala: 1.15 }]
+    // camiseta preta de manga longa e colete de couro aberto (casca: não há colete modelado de mulher com manga longa) e a
+    // calça cargo modelada (modeloCalca 'militar': bolsos e joelheiras) enfiada na bota marrom
+    visuais: [{ roupaQ: true, modeloCalca: 'militar', pele: '#8e5634', camisa: '#1a1a1a', manga: true, mangaLonga: true, colete: '#5a3422', calca: '#1c1a1a', calcaLarga: 0.7, cinto: '#2a1a12', bota: true, botaDe: 0.4, sapato: '#5a3420', sola: '#2a1a12', estilo: 'bandana', rabo: true, cabelo: '#120c08', faixaCabeca: '#c4202a', oculos: true, brincos: '#b8bcc4', corrente: true, corCorrente: '#6a7078', pulseira: '#6e737b', feminino: true, sorriso: true, larg: 1.05, escala: 1.15 }]
   },
   agulha: {   // Cap. 3 · Vila Velha
     chefe: true, nome: 'AGULHA', curto: 'Agulha', emoji: '🪡', cor: '#c77dff',
     hp: 290, vel: 4.2, golpes: ['armada', 'salto', 'rasteira', 'soco'], pontos: 4000, armadura: true, reacao: [0.3, 0.7],
     // cores um tom abaixo da foto (o toon clareia): blusa ameixa de gola alta, faixa lilás larga amarrada no quadril esquerdo com as pontas
     // caindo, legging preta, sapatilha lilás (peito do pé de fora), cabelo puxado num coque alto com elástico e duas agulhas quase deitadas
+    // Na casca: legging e blusa justa de gola alta são o próprio corpo pintado; não há blusa modelada de gola alta
     visuais: [{ pele: '#d4a882', camisa: '#2a1a2c', manga: true, mangaLonga: true, calca: '#151515', sapato: '#a46fd6', sola: '#7a4aa8', sapatilha: true, faixa: '#a46fd6', faixaLaco: true,
       estilo: 'coque', agulhas: '#c0c4c8', elastico: '#3a2040', cabelo: '#0d0d0d', feminino: true, golaAlta: true, batom: '#6b3a5a', bravo: true, larg: 0.86, escala: 1.1 }]
   },
@@ -5904,20 +5928,24 @@ Object.assign(DB.inimigos, {
     chefe: true, nome: 'MURALHA', curto: 'Muralha', emoji: '🧱', cor: '#d9734a',
     hp: 320, vel: 2.0, golpes: ['socao', 'socao', 'investida', 'pisao'], pontos: 4500, armadura: true, reacao: [0.4, 0.9],
     // a foto: bronzeado alaranjado, moicano castanho espetado com os lados raspados, óculos escuros de lente azul espelhada,
-    // sorrisão, corrente grossa prateada, bermuda terracota larga de hibiscos creme com cordão branco, tênis brancos
+    // sorrisão, corrente grossa prateada, bermuda terracota larga de hibiscos creme com cordão branco, tênis brancos.
+    // Na casca: a bermuda modelada não leva estampa e, sem camisa, mostra dentes da pele escondida na cintura
     visuais: [{ pele: '#a8643a', semCamisa: true, camisa: '#a8643a', calca: '#b85530', estampaCalca: 'hibisco', short: true, calcaLarga: 0.6, cordao: '#efe8dc', sapato: '#e8e8e8',
       estilo: 'moicano', cabelo: '#3a2214', oculos: true, corLente: '#1c2c44', corrente: true, corCorrente: '#7a8088', sorriso: true, musculo: 1.5, larg: 1.25, escala: 1.48 }]
   },
   navalha: {   // Cap. 5 · Morro
     chefe: true, nome: 'NAVALHA', curto: 'Navalha', emoji: '🥷🏿', cor: '#e8333a',
     hp: 330, vel: 4.3, golpes: ['armada', 'salto', 'rasteira', 'soco'], pontos: 5000, armadura: true, reacao: [0.3, 0.65], ginga: true,
-    visuais: [{ pele: '#4a2c1a', camisa: '#151515', manga: true, mangaAte: 0.5, calca: '#151515', sapato: '#4a2c1a', faixa: '#e8333a', estilo: 'dread', cabelo: '#0d0d0d', faixaCabeca: '#e8333a', bravo: true, larg: 0.9, escala: 1.12 }]
+    // roupa modelada: camiseta preta e a calça larga (jeans preto, faz de calça de capoeira) com a corda vermelha
+    visuais: [{ roupaQ: true, modeloCamisa: 'camiseta', pele: '#4a2c1a', camisa: '#151515', manga: true, mangaAte: 0.5, calca: '#151515', sapato: '#4a2c1a', faixa: '#e8333a', estilo: 'dread', cabelo: '#0d0d0d', faixaCabeca: '#e8333a', bravo: true, larg: 0.9, escala: 1.12 }]
   },
   ferreiro: {   // Cap. 6 · Lapa — o líder
     chefe: true, nome: 'O FERREIRO', curto: 'Ferreiro', emoji: '✊', cor: '#9aa0a8',
     hp: 440, vel: 2.1, golpes: ['socao', 'socao', 'pisao', 'investida'], pontos: 8000, armadura: true, reacao: [0.4, 0.8],
     invoca: { limiares: [0.66, 0.33], grupo: ['capanga', 'ligeiro', 'capanga'], grito: 'SEGURANÇAS!' },
-    visuais: [{ pele: '#9a5e3a', camisa: '#f4f1e8', manga: true, mangaLonga: true, paleto: '#2c3040', gravata: '#a3202a', calca: '#2c3040', calcaLarga: 0.6, sapato: '#111', sola: '#111', social: true, estilo: 'careca', barba: true, bigode: true, cabelo: '#7c7c7c', sobrancelhaEscura: true, luvaF: '#5c6169', bravo: true, musculo: 1.15, larg: 1.25, escala: 1.34, barriga: 1.05 }]
+    // paletó comprido com lapelas na casca (o terno modelado é curto e a gravata da casca vazava por baixo dele) e a calça
+    // social modelada
+    visuais: [{ roupaQ: true, modeloCalca: 'social', pele: '#9a5e3a', camisa: '#f4f1e8', manga: true, mangaLonga: true, paleto: '#2c3040', gravata: '#a3202a', calca: '#2c3040', calcaLarga: 0.6, sapato: '#111', sola: '#111', social: true, estilo: 'careca', barba: true, bigode: true, cabelo: '#7c7c7c', sobrancelhaEscura: true, luvaF: '#5c6169', bravo: true, musculo: 1.15, larg: 1.25, escala: 1.34, barriga: 1.05 }]
   }
 });
 
@@ -5930,60 +5958,66 @@ Object.assign(DB.inimigos, {
 // visual (opcional): boneco 3D de quem aparece parado na fase como figurante (fases.js → figurantes; opções em motor/modelo.js → Rig)
 Object.assign(DB.personagens, {
   narrador:   { nome: 'NARRADOR', emoji: '📻', cor: '#9aa3b5' },
-  // terno azul-marinho (paletó até o quadril, abertura em V com a camisa branca e a gravata azul larga), sapato social preto,
-  // cabelo grisalho curto penteado para trás, bigode grisalho cheio, sobrancelha escura, mãos para trás
+  // terno azul-marinho modelado (roupaQ 'social': paletó com lapelas, camisa branca e gravata azul royal; calça social),
+  // sapato social preto, cabelo grisalho curto penteado para trás, bigode grisalho cheio, sobrancelha escura, mãos para trás
   governador: { nome: 'GOVERNADOR ALTAIR', emoji: '🥋', cor: '#3a8fe8', pose: 'maosAtras',
-    visual: { pele: '#a5673e', camisa: '#f4f1e8', manga: true, mangaLonga: true, paleto: '#1f2f5c', gravata: '#2a6fd8', calca: '#1f2f5c', calcaLarga: 0.5, sapato: '#111', sola: '#111', social: true,
+    visual: { roupaQ: true, modeloCamisa: 'social', modeloCalca: 'social', pele: '#a5673e', camisa: '#1f2f5c', gravata: '#1c4fc4', calca: '#1f2f5c', sapato: '#111', sola: '#111', social: true,
       estilo: 'curto', cabelo: '#8f8f8f', sobrancelhaEscura: true, bigode: true, musculo: 1.1, larg: 1.1, barriga: 1.08 } },
   mestre:     { nome: 'MESTRE ADO', emoji: '🧓🏿', cor: '#d9b44a' },
   // Espírito Santo
   theo:       { nome: 'THÉO', emoji: '📷', cor: '#5fc8e8' },
   // camisa de botão laranja de zigue-zague e coqueiros (solta, gola aberta com a camiseta branca de baixo), barrigão, calça cargo
-  // oliva larga, tênis bege, boné laranja, bigodão, luvas sem dedos pretas, fones no pescoço; cadeira preta de tubos laranja e adesivos
-  beto:       { nome: 'BETO DO RÁDIO', emoji: '🧑🏽‍🦽', cor: '#ffb347',
+  // oliva larga, tênis bege, boné laranja, bigodão, luvas sem dedos pretas, fones no pescoço; cadeira preta de tubos laranja e adesivos.
+  // Sem roupaQ: a peça modelada é lisa (perde o tribal) e não acompanha o barrigão (a pança sai nua por baixo da camiseta)
+  beto:      { nome: 'BETO DO RÁDIO', emoji: '🧑🏽‍🦽', cor: '#ffb347',
     visual: { pele: '#8f5a36', camisa: '#d9600f', estampaCamisa: 'tribal', manga: true, mangaAte: 0.5, camisaSolta: true, golaAberta: true, camisetaDentro: '#ece6d6',
       calca: '#4a4f2c', calcaLarga: 0.6, sapato: '#cbbf9f', sola: '#efe9dc',
       estilo: 'bone', corBone: '#e06a12', cabelo: '#2e2a28', bigode: 'grosso', sorriso: true, barriga: 1.4, barrigao: 1, larg: 1.25, foneNoPescoco: '#3a3d2a', segura: 'radio', luva: '#262626',
       cadeira: true, corCadeira: '#222226', corTubo: '#e06a12', adesivos: true, antenaCadeira: true } },
   taina:      { nome: 'TAINÁ', emoji: '✊🏾', cor: '#e8333a' },
-  // camiseta verde solta (um tom abaixo da foto), bermuda cinza-chumbo acima do joelho com bolso cargo, descalço, cabelo preto liso
-  // com franja, colar de contas escuras com sementes claras e pingente, remo de madeira apoiado no ombro
+  // camiseta verde modelada (roupaQ; dois tons abaixo da foto: a peça lisa sai mais viva), bermuda cinza-chumbo lisa acima do
+  // joelho (a do camponês: a moderna tem listras brancas) com bolso cargo, descalço, cabelo preto liso com franja, colar de
+  // contas escuras com sementes claras e pingente, remo de madeira apoiado no ombro
   kaue:       { nome: 'KAUÊ', emoji: '🛶', cor: '#3fbf6a', pose: 'remo',
-    visual: { pele: '#9a5a32', camisa: '#2e8a42', manga: true, mangaAte: 0.6, camisaSolta: true, calca: '#2e2e33', short: true, shortAte: 0.8, bolsos: true,
+    visual: { roupaQ: true, modeloCamisa: 'camiseta', modeloCalca: 'tunica', pele: '#9a5a32', camisa: '#24703a', manga: true, mangaAte: 0.6, camisaSolta: true, calca: '#2e2e33', short: true, shortAte: 0.8, bolsos: true,
       estilo: 'franja', cabelo: '#0d0d0d', colar: '#1e1a18', sementes: '#e2cca2', segura: 'remo', larg: 0.92 } },
-  // regata rosa, bermuda cargo oliva com cinto marrom, tênis azul-marinho de sola branca, quepe branco de capitã com âncora e
+  // regata rosa (casca: a regata funda fica no qCorte), bermuda cargo oliva modelada (roupaQ; a do camponês, lisa) com cinto marrom, tênis azul-marinho de sola branca, quepe branco de capitã com âncora e
   // óculos escuros na faixa, trança castanha pelo ombro, argolas prateadas, apito, gargalhada; aponta com a outra mão na cintura
   rafaela:    { nome: 'RAFAELA', emoji: '⚓', cor: '#ff7ab8', pose: 'apontando',
-    visual: { pele: '#a8683e', camisa: '#d8478c', regata: true, calca: '#6a6440', short: true, shortAte: 0.8, bolsos: true, cinto: '#4a2e1a',
+    visual: { roupaQ: true, pele: '#a8683e', camisa: '#d8478c', regata: true, calca: '#5a5636', short: true, shortAte: 0.8, bolsos: true, cinto: '#4a2e1a',
       sapato: '#1f2a44', sola: '#f4f1e8', estilo: 'tranca', cabelo: '#4a2a14', elastico: '#7a3a5a', capita: true, oculosChapeu: true,
       brincos: '#c8ccd2', apito: true, sorriso: true, feminino: true, musculo: 1.1, larg: 1.08 } },
   // Rio de Janeiro
   // camiseta lilás com o logo do podcast, short jeans claro, meia branca, tênis branco e lilás, dois puffs crespos, fone gigante
-  // lilás, sorrisão; pau de selfie erguido
+  // lilás, sorrisão; pau de selfie erguido. Sem roupaQ: o short feminino modelado é o do camponês e cruza com a camiseta
+  // moderna na cintura (manchas lilás no quadril) — volta quando houver short feminino moderno
   lalinha:    { nome: 'LALINHA', emoji: '🎧', cor: '#c77dff', pose: 'selfie',
     visual: { pele: '#8a5530', camisa: '#a46fd6', manga: true, mangaAte: 0.6, logoPodcast: true, calca: '#6f8fc0', short: true, shortAte: 0.45,
       meiao: '#f4f1e8', meiaoDe: 0.85, sapato: '#f4f1e8', sola: '#b77ef0', estilo: 'puffs', cabelo: '#2a1a10', foneCabeca: '#a46fd6', segura: 'selfie',
       sorriso: true, feminino: true, escala: 0.62, cabecaEsc: 1.0, larg: 0.85 } },
   // pose (opcional): postura do figurante em pé (motor/figurantes.js → POSES_FIGURANTE)
   cida:       { nome: 'DONA CIDA', emoji: '👵🏾', cor: '#ff9f43', pose: 'travessa',
-    // cores um tom abaixo da foto: a luz toon clareia e satura (lenço laranja forte, blusa malva, saia ameixa até o meio da canela,
+    // cores um tom abaixo da foto: a luz toon clareia e satura (lenço laranja forte, blusa malva modelada (roupaQ), saia ameixa até o meio da canela,
     // perna de fora, avental creme de flores laranja e vermelhas, óculos de aro dourado fino, chinelo de dedo)
-    visual: { pele: '#6b3f22', camisa: '#6e3a5c', manga: true, mangaAte: 0.5, calca: '#6b3f22', saia: '#3e1f36', saiaAte: 0.5, avental: '#e2cca2', estampaAvental: 'florido',
+    visual: { roupaQ: true, pele: '#6b3f22', camisa: '#6e3a5c', manga: true, mangaAte: 0.5, calca: '#6b3f22', saia: '#3e1f36', saiaAte: 0.5, avental: '#e2cca2', estampaAvental: 'florido',
       faixa: '#e8d4a0', chinelo: '#efe6cf', estilo: 'lenco', corLenco: '#e8650f', cabelo: '#8a8a8a', oculos: 'grau', oculosPonta: true, corLente: '#b08060', corAro: '#9a7a3a', sobrancelhaEscura: true,
       brincos: '#e8b830', segura: 'travessa', feminino: true, busto: 1.25, barriga: 1.35, larg: 1.2, escala: 0.9, bravo: true } },
   josue:      { nome: 'IRMÃO JOSUÉ', emoji: '📖', cor: '#4f86c6' },
   // tudo branco-gelo: turbante alto de pano, bata solta, saia rodada até o tornozelo com a faixa amarrada do lado; guias longas
-  // vermelhas, brancas e azuis até a barriga, argolas grandes prateadas, pulseira no pulso esquerdo, chinelo branco; ervas erguidas
-  iara:       { nome: 'MÃE IARA', emoji: '🌿', cor: '#f2efe6', pose: 'benzendo',
+  // vermelhas, brancas e azuis até a barriga, argolas grandes prateadas, pulseira no pulso esquerdo, chinelo branco; ervas erguidas.
+  // Sem roupaQ: o vestido modelado é curto e sem manga, e a camiseta não faz a bata larga de manga até o cotovelo
+  iara:      { nome: 'MÃE IARA', emoji: '🌿', cor: '#f2efe6', pose: 'benzendo',
     visual: { pele: '#7a4526', camisa: '#ece6d6', manga: true, camisaSolta: true, calca: '#7a4526', saia: '#ece6d6', saiaAte: 0.92, faixa: '#ece6d6', faixaLaco: true,
       chinelo: '#ece6d6', estilo: 'turbante', corTurbante: '#ece6d6', guias: true, guiasLongas: true, brincos: '#d8d8d8', argolaGrande: true,
       pulseira: '#d8d8d8', pulseiraSo: 'esquerdo', segura: 'ervas', feminino: true, escala: 1.03, larg: 1.05 } },
   davi:       { nome: 'PASTORZINHO DAVI', emoji: '🙏🏾', cor: '#ffd21f', pose: 'pregando',
-    // camisa social amarela grande e solta com botões, gravata-borboleta preta grande, calça preta larga com cinto, tênis branco;
+    // camisa amarela com botões (camiseta modelada, roupaQ), gravata-borboleta preta grande, calça social preta modelada com cinto, tênis branco;
     // gargalhada banguela de olhos fechados, cabeça de criança (cabecaEsc > 1: maior)
-    visual: { pele: '#6b3f22', camisa: '#e8c21a', manga: true, camisaSolta: true, borboleta: '#141010', botoes: '#c9a010', calca: '#1b1b1b', calcaLarga: 0.6, cinto: '#141010',
+    visual: { roupaQ: true, modeloCalca: 'social', pele: '#6b3f22', camisa: '#e8c21a', manga: true, camisaSolta: true, borboleta: '#141010', botoes: '#c9a010', calca: '#1b1b1b', calcaLarga: 0.6, cinto: '#141010',
       sapato: '#f4f1e8', sola: '#f4f1e8', estilo: 'raspado', cabelo: '#141010', riso: true, banguela: true, olhosFechados: true, segura: 'biblia',
       escala: 0.6, cabecaEsc: 1.08, larg: 0.9 } },
+  // vestido longo de paetê rosa com fenda, luvas longas, salto plataforma, peruca loira volumosa com coroa. Sem roupaQ: o vestido
+  // modelado é curto e liso (perde o paetê)
   kika:       { nome: 'KIKA DIAMANTE', emoji: '👑', cor: '#ff3dc8', pose: 'leque',
     visual: { pele: '#c58a5a', camisa: '#ff3dc8', estampaCamisa: 'paete', calca: '#ff3dc8', estampaCalca: 'paete', saia: '#ff3dc8', estampaSaia: 'paete',
       sapato: '#ff3dc8', sola: '#c0157a', luvaLonga: '#e0218a', segura: 'leque', corLeque: '#ff4fc0',
