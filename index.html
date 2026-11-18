@@ -3158,7 +3158,7 @@ function qBarrigao(geo, med, k) {
 function qCorte(id, d) {
   const descalco = !d.sapato || d.sapato === d.pele;
   const chave = id + JSON.stringify([d.semCamisa, d.manga, d.mangaAte, d.mangaLonga, d.short, d.shortAte, !!d.meiao, !!d.luva, !!d.luvaLonga, !!d.luvaF,
-    !!d.paleto, !!d.colete, !!d.gravata, d.golaAlta, !!d.gola, !!d.avental, !!d.listraLado, !!d.listraManga, !!d.saia, descalco, !!d.macacao, d.meiaoDe, !!d.debrum, d.saiaAte, !!d.bota, d.botaDe, d.estilo === 'lenco' ? 1 : d.estilo === 'bandana' ? 2 : Q_PUXADO.has(d.estilo) ? 3 : d.estilo === 'moicano' ? 4 + (d.crista || 1) : 0, d.calcaLarga, d.debrumSo, !!d.sapatilha, Q_UV_ESTAMPA[d.estampaCalca] || 0, Q_UV_ESTAMPA[d.estampaCamisa] || 0, !!d.camisaSolta, !!d.regata, !!d.golaAberta, d.estilo === 'moicano' && !!d.laterais, !!d.camisetaDentro, d.barrigao || 0, d.estilo === 'turbante', !!d.roupaQ, d.roupaQ && d.modeloCamisa, d.roupaQ && d.modeloCalca]);   // lenço (com volume), bandana (justa), coque (cabelo pintado)
+    !!d.paleto, !!d.colete, !!d.gravata, d.golaAlta, !!d.gola, !!d.avental, !!d.listraLado, !!d.listraManga, !!d.saia, descalco, !!d.macacao, d.meiaoDe, !!d.debrum, d.saiaAte, !!d.bota, d.botaDe, d.estilo === 'lenco' ? 1 : d.estilo === 'bandana' ? 2 : Q_PUXADO.has(d.estilo) ? 3 : d.estilo === 'moicano' ? 4 + (d.crista || 1) : 0, d.calcaLarga, d.debrumSo, !!d.sapatilha, Q_UV_ESTAMPA[d.estampaCalca] || 0, Q_UV_ESTAMPA[d.estampaCamisa] || 0, !!d.camisaSolta, !!d.regata, !!d.golaAberta, d.estilo === 'moicano' && !!d.laterais, !!d.camisetaDentro, d.barrigao || 0, d.estilo === 'turbante', d.roupaQ || 0, d.roupaQ && d.modeloCamisa, d.roupaQ && d.modeloCalca]);   // lenço (com volume), bandana (justa), coque (cabelo pintado)
   QX.cortes = QX.cortes || new Map();
   if (QX.cortes.has(chave)) return QX.cortes.get(chave);
   const { geo } = QX.geo[id].find(x => x.m.papel === 'corpo'), med = QX.med[id];
@@ -3511,13 +3511,14 @@ function qVestir(id, d, peca) {
   const fonte = qFonte(id, d, peca); if (!fonte) return null;
   const modelo = fonte.modelo;
   const chave = fonte.geo + JSON.stringify([d.semCamisa, d.manga, d.mangaAte, d.mangaLonga, d.short, d.shortAte, d.regata, d.macacao, d.golaAberta, d.camisetaDentro,
-    d.saia, d.saiaAte, d.luva, d.luvaLonga, d.bota, d.botaDe, d.meiao, d.meiaoDe, d.paleto, d.colete, d.golaAlta, d.avental, d.gravata, d.camisaSolta, d.listraLado, d.calca === d.pele, modelo]);
+    d.saia, d.saiaAte, d.luva, d.luvaLonga, d.bota, d.botaDe, d.meiao, d.meiaoDe, d.paleto, d.colete, d.golaAlta, d.avental, d.gravata, d.camisaSolta, d.listraLado, d.calca === d.pele, modelo, d.barrigao || 0]);
   QX.vestir = QX.vestir || new Map(); if (QX.vestir.has(chave)) return QX.vestir.get(chave);
   const base = QX.geo[fonte.geo], med = QX.med[id], nomes = QUATERNIUS.ossos;
   const liso = !fonte.modular && peca === 'camisa' && modelo !== 'tunica';   // camiseta do camponês lisa: sem o relevo do cinto e das presilhas (qAplainar)
   const P = liso ? qAplainar(id, peca) : base.attributes.position.array, N = base.attributes.normal.array, dom = base.userData.dominante, I = base.index.array, nv = dom.length;
   const filhoDe = new Map(); nomes.forEach((n, k) => { const p = QUATERNIUS.esqueletos[id].ossos[k].p; if (p >= 0 && !filhoDe.has(p)) filhoDe.set(p, k); });
-  const kCai = (!fonte.modular && Q_CAIMENTO[d.modeloCamisa]) || 1, fora = new Uint8Array(nv), Pn = kCai !== 1 || liso ? new Float32Array(P) : null, sobra = kCai !== 1 ? qSobra(id, peca) : null;
+  const kCai = (!fonte.modular && Q_CAIMENTO[d.modeloCamisa]) || 1, fora = new Uint8Array(nv), sobra = kCai !== 1 ? qSobra(id, peca) : null;
+  let Pn = kCai !== 1 || liso || d.barrigao ? new Float32Array(P) : null, Nn = null;
   for (let i = 0; i < nv; i++) {
     const k = dom[i], a = med.pos[k], f = filhoDe.has(k) ? med.pos[filhoDe.get(k)] : a;
     const sx = f.x - a.x, sy = f.y - a.y, sz = f.z - a.z, L2 = sx * sx + sy * sy + sz * sz, x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
@@ -3530,6 +3531,8 @@ function qVestir(id, d, peca) {
       Pn[i * 3] = x + ex / rr * mv; Pn[i * 3 + 1] = y + ey / rr * mv; Pn[i * 3 + 2] = z + ez / rr * mv;
     }
   }
+  // pança (barrigao): a peça deforma igual ao corpo (qBarrigao só depende da posição), senão a barriga atravessava o pano
+  if (d.barrigao) { const r = qBarrigao({ attributes: { position: { array: Pn }, normal: { array: N } }, index: { array: I }, userData: { dominante: dom } }, med, d.barrigao); Pn = r.P; Nn = r.N; }
   const idx = [], usado = new Uint8Array(nv), gruposB = base.userData.grupos || [[0, I.length, null, 1, '']], grupos = [];
   for (const [ini, cnt, cor, principal, nome] of gruposB) { const i0 = idx.length;   // um grupo por material (roupa moderna): cada um com a sua cor
     for (let t = ini; t < ini + cnt; t += 3) if (!fora[I[t]] && !fora[I[t + 1]] && !fora[I[t + 2]]) { idx.push(I[t], I[t + 1], I[t + 2]); usado[I[t]] = usado[I[t + 1]] = usado[I[t + 2]] = 1; }
@@ -3539,6 +3542,7 @@ function qVestir(id, d, peca) {
     g = new THREE.BufferGeometry();
     for (const nome of ['position', 'normal', 'uv', 'skinIndex', 'skinWeight']) g.setAttribute(nome, base.attributes[nome]);   // atributos compartilhados (cache)
     if (Pn) g.setAttribute('position', new THREE.BufferAttribute(Pn, 3));
+    if (Nn) g.setAttribute('normal', new THREE.BufferAttribute(Nn, 3, true));
     g.setIndex(idx); g.computeBoundingSphere();
     grupos.forEach((gr, i) => g.addGroup(gr.ini, gr.n, i)); g.userData.grupos = grupos; g.userData.fonte = fonte;
     // amostra para medir a malha animada (chão, testes): os extremos de cada osso só entre os vértices que ficaram
@@ -3596,6 +3600,19 @@ function qCobertura(id, geo) {
       for (let i = 0; i < dom.length; i++) if (dom[i] === k) tmax = Math.max(tmax, clamp((a.y - P[i * 3 + 1]) / L, 0, 1)); }
     out.canela = tmax; }
   QX.cob[ck] = out; return out;
+}
+// estampa na roupa moderna (sem UV): projetada pelos 3 eixos na posição de repouso (antes da pele), misturada pela normal —
+// camuflado, havaiana, hibisco, jeans acompanham o corpo como pano estampado. Q_ESTAMPA_ESC: repetições por metro
+const Q_ESTAMPA_ESC = '2.4';
+function qEstampaPatch(sh) {
+  toonPatch(sh);
+  sh.vertexShader = 'varying vec3 vEstP, vEstN;\n' + sh.vertexShader
+    .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n  vEstN = objectNormal;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vEstP = position;');
+  sh.fragmentShader = 'varying vec3 vEstP, vEstN;\n' + sh.fragmentShader.replace('#include <map_fragment>', `
+    vec3 wq = pow( abs( normalize( vEstN ) ), vec3( 4.0 ) ); wq /= ( wq.x + wq.y + wq.z );
+    vec4 tA = mapTexelToLinear( texture2D( map, vEstP.zy * ${Q_ESTAMPA_ESC} ) ), tB = mapTexelToLinear( texture2D( map, vEstP.xz * ${Q_ESTAMPA_ESC} ) ), tC = mapTexelToLinear( texture2D( map, vEstP.xy * ${Q_ESTAMPA_ESC} ) );
+    diffuseColor *= tA * wq.x + tB * wq.y + tC * wq.z;`);
 }
 // listras horizontais na roupa modelada: faixas pela altura do vértice no repouso (antes da pele), então acompanham o corpo
 function qListrasPatch(sh) {
@@ -3702,11 +3719,14 @@ class RigQ {
         this.pecasQ = [];   // peças modeladas vestidas (testes)
         if (d.roupaQ) for (const peca of ['camisa', 'calca']) { if (!qUsaRoupaQ(d, peca)) continue;
           const g = qVestir(id, d, peca), cor = peca === 'camisa' ? d.camisa : d.calca; if (!g) continue;
-          const listras = peca === 'camisa' && d.estampaCamisa === 'listras', f = g.userData.fonte;
+          const listras = peca === 'camisa' && d.estampaCamisa === 'listras', f = g.userData.fonte, est = peca === 'camisa' ? d.estampaCamisa : d.estampaCalca;
           // pano principal na cor do personagem; os outros materiais da peça (camisa branca do terno, gravata, capuz) na cor
           // própria — a gravata segue visual.gravata. Peça do camponês: textura tingida
           const mats = g.userData.grupos.map(gr => { let mt;
             if (!f.modular) mt = M('#ffffff', qTexturaRoupa(f.tex, cor, qPanoPrincipal(id, peca), f.modelo === 'tunica'), { skinning: true, side: THREE.DoubleSide });
+            else if (gr.principal && est && est !== 'listras') {   // pano principal estampado (projeção pelos 3 eixos)
+              const t = texturasRoupa(cor, est); mt = M(t.cor, t.map, { skinning: true, side: THREE.DoubleSide });
+              t.map.wrapS = t.map.wrapT = THREE.RepeatWrapping; mt.onBeforeCompile = qEstampaPatch; }
             else mt = M(gr.principal ? cor : /Tie/i.test(gr.nome) && d.gravata ? d.gravata : gr.cor, null, { skinning: true, side: THREE.DoubleSide });
             if (listras && (gr.principal || !f.modular)) mt.onBeforeCompile = qListrasPatch;   // listras de verdade no pano (pela altura do repouso)
             return mt; });
@@ -3899,13 +3919,13 @@ class RigQ {
   }
   // corrente grossa em volta da base do pescoço, caindo no peito (medida no pescoço do modelo, não no tronco do Rig)
   correnteNoPescoco(mat) {
-    const med = this.med, k = this.iOsso('spine_03'), pn = med.pos[this.iOsso('neck_01')], R = med.pescocoRaio + 0.055;
+    const med = this.med, k = this.iOsso('spine_03'), pn = med.pos[this.iOsso('neck_01')], R = med.pescocoRaio + 0.04;   // Bruno (18/11): a volta do cordão é do tamanho da foto — rente ao pescoço, caindo pouco no peito (elos grossos como antes)
     const g = new THREE.Group(), Mm = new THREE.Matrix4().compose(new THREE.Vector3(pn.x, pn.y - 0.01, pn.z), Q_MAP, new THREE.Vector3(1, 1, 1));
     med.ibm[k].clone().multiply(Mm).decompose(g.position, g.quaternion, g.scale); this.ossos[k].add(g);
     const incl = new THREE.Group(); incl.rotation.z = this.d.feminino ? -0.3 : -0.62; g.add(incl);   // a frente cai sobre o peito (no corpo de mulher, pouco: senão entra no busto)
     // elos grossos alternando deitado/em pé ao longo da elipse (o anel liso parecia uma gola amarela)
     GEO.elo = GEO.elo || new THREE.TorusGeometry(1, 0.42, 4, 8);
-    const N = 20, rz = R * 1.1, passo = 2 * Math.PI * Math.sqrt((R * R + rz * rz) / 2) / N;
+    const N = 16, rz = R * 1.1, passo = 2 * Math.PI * Math.sqrt((R * R + rz * rz) / 2) / N;
     for (let k = 0; k < N; k++) { const a = 2 * Math.PI * k / N, el = new THREE.Group();
       el.position.set(R * 0.3 + Math.cos(a) * R, 0, Math.sin(a) * rz); el.rotation.y = -Math.atan2(Math.cos(a) * rz, -Math.sin(a) * R); incl.add(el);
       peca(el, GEO.elo, mat, passo * 0.68, passo * 0.5, passo * 0.5, 0, 0, 0, false).rotation.x = k % 2 ? Math.PI / 2 : 0; }
@@ -4709,6 +4729,7 @@ class Inimigo extends Lutador {
       v.escala = (v.escala || 1) * (corpo.escala || 1);
       v.larg = (v.larg || 1) * (corpo.larg || 1);
       if (corpo.barriga) v.barriga = Math.max(v.barriga || 1, corpo.barriga);
+      if (corpo.barrigao) v.barrigao = Math.max(v.barrigao || 0, corpo.barrigao);   // pança do boneco Quaternius (barriga só mexia no Rig antigo)
     }
     return v;
   }
@@ -5025,7 +5046,7 @@ class Item {
 //  uso 'bater':     o golpe vira o ataque da arma até ela quebrar (usos)
 //  Ao levar uma queda, o herói solta a arma no chão.
 // ============================================================
-const _Q1 = new THREE.Quaternion(), _Q2 = new THREE.Quaternion(), _Q3 = new THREE.Quaternion(), _E1 = new THREE.Euler(), _V1 = new THREE.Vector3();
+const _Q1 = new THREE.Quaternion(), _Q2 = new THREE.Quaternion(), _Q3 = new THREE.Quaternion(), _E1 = new THREE.Euler(), _V1 = new THREE.Vector3(), _V2 = new THREE.Vector3(), _V3 = new THREE.Vector3();
 class Arma {
   constructor(tipo, x, z) {
     this.D = DB.armas[tipo]; this.tipo = tipo; this.x = x; this.z = z; this.usos = this.D.usos || 1;
@@ -5059,6 +5080,10 @@ class Arma {
     this.m.quaternion.copy(qMao.invert().multiply(qCorpo));
     const p = _V1.set(...(this.D.pega || [0, 0, 0])).applyQuaternion(this.m.quaternion);
     this.m.position.set(0.04 - p.x, -0.33 - p.y, -p.z);
+    // a base da arma em pé não passa do chão: a cadeira, pendurada pelo encosto na mão de trás, descia com o braço no
+    // arremesso e as pernas dela entravam 10 cm no chão. (A raiz do lutador ainda está na posição do quadro anterior.)
+    const y = this.m.getWorldPosition(_V2).y - h.rig.root.position.y + h.y;
+    if (y < 0) { const s = mao.getWorldScale(_V3).x || 1; this.m.position.add(_V2.set(0, -y / s, 0).applyQuaternion(mao.getWorldQuaternion(_Q3).invert())); }
   }
   // larga no chão onde o herói está
   soltar() {
@@ -5711,7 +5736,7 @@ Object.assign(DB.golpes, {
   meialua:   { pose: 'meialua', dur: 0.72, ini: 0.12, fim: 0.58, alc: 0, larg: 1.8, dano: 16, derruba: true, emp: 6, ambos: true, forte: true },
   // wrestling (Hanz): antebraço e marretada com as duas mãos
   antebraco: { pose: 'cotovelada', dur: 0.34, ini: 0.1, fim: 0.18, alc: 0.75, larg: 0.55, dano: 9, atord: 0.45, emp: 2.2, passo: 1.4 },
-  marretada: { pose: 'bengalada', dur: 0.55, ini: 0.22, fim: 0.32, alc: 1.0, larg: 0.5, dano: 14, derruba: true, emp: 6, forte: true, passo: 0.8 },
+  marretada: { pose: 'bengalada', dur: 0.55, ini: 0.22, fim: 0.32, alc: 1.0, larg: 0.45, dano: 14, derruba: true, emp: 6, forte: true, passo: 0.8 },
   // especiais de cada herói (botão L)
   giratorio:     { pose: 'armada', dur: 0.66, ini: 0.16, fim: 0.5, alc: 0, larg: 1.8, dano: 15, derruba: true, emp: 6, ambos: true, forte: true },                // Dandara: chute giratório
   arremetida:    { pose: 'investida', dur: 0.85, ini: 0.15, fim: 0.7, alc: 0.8, larg: 0.8, dano: 18, derruba: true, emp: 8, forte: true, avanco: 9.5 },      // Hanz: arremetida de ombro
@@ -5836,7 +5861,7 @@ const CORPOS = {
   magrelo:  { nome: 'magrelo',  escala: 1.06, larg: 0.78, vida: 0.9,  vel: 1.08 },
   normal:   { nome: 'normal',   escala: 1.0,  larg: 1.0 },
   alto:     { nome: 'alto',     escala: 1.15, larg: 1.05, vida: 1.15, vel: 0.95 },
-  gordinho: { nome: 'gordinho', escala: 0.95, larg: 1.25, barriga: 1.35, vida: 1.25, vel: 0.85 },
+  gordinho: { nome: 'gordinho', escala: 0.95, larg: 1.25, barriga: 1.35, barrigao: 0.6, vida: 1.25, vel: 0.85 },
   parrudo:  { nome: 'parrudo',  escala: 1.08, larg: 1.3,  vida: 1.3,  vel: 0.9 }
 };
 
@@ -5876,21 +5901,23 @@ Object.assign(DB.inimigos, {
   brutamontes: {
     hp: 85, vel: 1.7, golpes: ['socao'], pontos: 300, armadura: true, reacao: [0.5, 1.1],
     corpos: [CORPOS.normal, CORPOS.alto, CORPOS.gordinho, CORPOS.parrudo],
-    // careca, calça camuflada, corrente e coturno. A calça camuflada fica na casca (a modelada ainda não leva estampa);
-    // o 2º veste roupa modelada: camiseta vinho e a calça cargo de obra (joelheiras) verde-oliva enfiada no coturno
-    visuais: [{ pele: '#6b4226', camisa: '#1b1b1b', calca: '#4b5320', estampaCalca: 'camuflado', estilo: 'careca', oculos: true, corrente: true, corCorrente: '#c8ccd2', bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', larg: 1.3, escala: 1.22, barriga: 1.1 },
+    // careca, calça camuflada, corrente e coturno. Roupa modelada, um modelo cada: 1º regata preta + calça jeans camuflada;
+    // 2º camiseta vinho + calça cargo de obra (joelheiras) verde-oliva no coturno. O 3º, sem camisa, fica na casca
+    // (calça modelada sem camisa mostra dentes claros na cintura)
+    visuais: [{ roupaQ: true, modeloCamisa: 'regata', modeloCalca: 'jeans', pele: '#6b4226', camisa: '#1b1b1b', calca: '#4b5320', estampaCalca: 'camuflado', estilo: 'careca', oculos: true, corrente: true, corCorrente: '#c8ccd2', bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', larg: 1.3, escala: 1.22, barriga: 1.1 },
               { roupaQ: true, modeloCamisa: 'camiseta', modeloCalca: 'obra', pele: '#c08050', camisa: '#5e1616', calca: '#4b5320', bota: true, botaDe: 0.55, estilo: 'careca', barba: true, corrente: true, bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', larg: 1.3, escala: 1.22 },
               { pele: '#4a2c1a', semCamisa: true, camisa: '#4a2c1a', calca: '#3b3b3b', estampaCalca: 'camuflado', estilo: 'careca', cabelo: '#111', barba: true, corrente: true, bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', larg: 1.3, escala: 1.22 }]
   },
   coqueiro: {
     hp: 30, vel: 2.7, golpes: ['arremesso'], pontos: 200, distante: true, reacao: [1.3, 2.2],
     corpos: [CORPOS.baixinho, CORPOS.normal, CORPOS.gordinho, CORPOS.magrelo],
-    // 1º = a foto: camisa verde de hibiscos vermelhos aberta no peito (solta, gola aberta), bermuda creme, chapéu de palha
-    // dourada de fita vermelha, sorriso e pé descalço. Os outros: a mesma camisa florida aberta e o chapéu, variando a cor.
-    // Na casca (sem roupaQ): a roupa modelada ainda não leva estampa nem abre a gola
-    visuais: [{ pele: '#9a6038', camisa: '#1d7a2e', estampaCamisa: 'havaiana', camisaSolta: true, golaAberta: true, manga: true, mangaAte: 0.55, calca: '#cfc0a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', cabelo: '#141010', sorriso: true, bravo: true },
+    // 1º = a foto: camisa verde de hibiscos vermelhos, bermuda creme, chapéu de palha dourada de fita vermelha, sorriso e
+    // pé descalço. Camisa modelada estampada (roupaQ 'camisa': a havaiana sai nítida, mas a gola fecha) e a bermuda lisa
+    // na casca (a moderna tem listras brancas e dentes na barra). 2º: a camisa florida aberta no peito (casca, golaAberta);
+    // 3º: colete florido modelado por cima da camiseta branca
+    visuais: [{ roupaQ: 'camisa', modeloCamisa: 'camiseta', pele: '#9a6038', camisa: '#18682a', estampaCamisa: 'havaiana', manga: true, mangaAte: 0.55, calca: '#cfc0a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', cabelo: '#141010', sorriso: true, bravo: true },
               { pele: '#6e4428', camisa: '#2a78b8', estampaCamisa: 'floral', camisaSolta: true, golaAberta: true, manga: true, mangaAte: 0.55, calca: '#d8d8d0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', sorriso: true, bravo: true },
-              { pele: '#c48a5e', camisa: '#d0681a', estampaCamisa: 'floral', camisaSolta: true, golaAberta: true, manga: true, mangaAte: 0.55, calca: '#d8c8a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', barba: true, cabelo: '#5a3a22', bravo: true }]
+              { roupaQ: 'camisa', modeloCamisa: 'colete', pele: '#c48a5e', camisa: '#d0681a', estampaCamisa: 'floral', manga: true, mangaAte: 0.55, calca: '#d8c8a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', barba: true, cabelo: '#5a3a22', bravo: true }]
   },
   // ---- cachorro (quadrúpede: modelo próprio em motor/modelo.js → montarCao) ----
   cao: {
@@ -5905,8 +5932,8 @@ Object.assign(DB.inimigos, {
   bigorna: {   // Cap. 1 · Vitória
     chefe: true, nome: 'BIGORNA', curto: 'Bigorna', emoji: '🔨', cor: '#8a8f98',
     hp: 260, vel: 2.2, golpes: ['socao', 'soco', 'investida', 'investida'], pontos: 3000, armadura: true, reacao: [0.45, 0.95],
-    // na casca: a calça cargo camuflada é o que mais marca a foto e a roupa modelada ainda não leva estampa
-    visuais: [{ pele: '#74462a', camisa: '#1b1b1b', manga: true, mangaAte: 0.55, calca: '#4b5320', estampaCalca: 'camuflado', calcaLarga: 0.8, bota: true, botaDe: 0.55, sapato: '#1b1b1b', sola: '#111111', estilo: 'careca', barba: true, cabelo: '#111', corrente: true, corCorrente: '#c99a2e', bravo: true, musculo: 1.25, larg: 1.45, escala: 1.4, barriga: 1.1 }]
+    // roupa modelada: camiseta preta e calça cargo (obra, com joelheira) camuflada larga no coturno
+    visuais: [{ roupaQ: true, modeloCalca: 'obra', pele: '#74462a', camisa: '#1b1b1b', manga: true, mangaAte: 0.55, calca: '#4b5320', estampaCalca: 'camuflado', calcaLarga: 0.8, bota: true, botaDe: 0.55, sapato: '#1b1b1b', sola: '#111111', estilo: 'careca', barba: true, cabelo: '#111', corrente: true, corCorrente: '#c99a2e', bravo: true, musculo: 1.25, larg: 1.45, escala: 1.4, barriga: 1.1 }]
   },
   corrente: {   // Cap. 2 · Terceira Ponte
     chefe: true, nome: 'CORRENTE', curto: 'Corrente', emoji: '⛓️', cor: '#e8333a',
@@ -5929,7 +5956,8 @@ Object.assign(DB.inimigos, {
     hp: 320, vel: 2.0, golpes: ['socao', 'socao', 'investida', 'pisao'], pontos: 4500, armadura: true, reacao: [0.4, 0.9],
     // a foto: bronzeado alaranjado, moicano castanho espetado com os lados raspados, óculos escuros de lente azul espelhada,
     // sorrisão, corrente grossa prateada, bermuda terracota larga de hibiscos creme com cordão branco, tênis brancos.
-    // Na casca: a bermuda modelada não leva estampa e, sem camisa, mostra dentes da pele escondida na cintura
+    // Na casca (conferido 18/11/2026): a bermuda modelada estampada é curta, tem cós e 2 listras brancas na barra e, sem
+    // camisa, mostra dentes na cintura e na barra
     visuais: [{ pele: '#a8643a', semCamisa: true, camisa: '#a8643a', calca: '#b85530', estampaCalca: 'hibisco', short: true, calcaLarga: 0.6, cordao: '#efe8dc', sapato: '#e8e8e8',
       estilo: 'moicano', cabelo: '#3a2214', oculos: true, corLente: '#1c2c44', corrente: true, corCorrente: '#7a8088', sorriso: true, musculo: 1.5, larg: 1.25, escala: 1.48 }]
   },
@@ -5968,7 +5996,8 @@ Object.assign(DB.personagens, {
   theo:       { nome: 'THÉO', emoji: '📷', cor: '#5fc8e8' },
   // camisa de botão laranja de zigue-zague e coqueiros (solta, gola aberta com a camiseta branca de baixo), barrigão, calça cargo
   // oliva larga, tênis bege, boné laranja, bigodão, luvas sem dedos pretas, fones no pescoço; cadeira preta de tubos laranja e adesivos.
-  // Sem roupaQ: a peça modelada é lisa (perde o tribal) e não acompanha o barrigão (a pança sai nua por baixo da camiseta)
+  // Na casca (conferido 18/11/2026 com a camiseta modelada estampada e de pança): a modelada fecha a gola e some a camiseta
+  // branca do V, que é o que mais marca a foto; a calça cargo modelada (obra) põe joelheira marrom e a social fica fina sentada
   beto:      { nome: 'BETO DO RÁDIO', emoji: '🧑🏽‍🦽', cor: '#ffb347',
     visual: { pele: '#8f5a36', camisa: '#d9600f', estampaCamisa: 'tribal', manga: true, mangaAte: 0.5, camisaSolta: true, golaAberta: true, camisetaDentro: '#ece6d6',
       calca: '#4a4f2c', calcaLarga: 0.6, sapato: '#cbbf9f', sola: '#efe9dc',
