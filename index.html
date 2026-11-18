@@ -3099,6 +3099,8 @@ function qRegiao(d, nome, t, y, nz, nx, ny, med, x = 0, dx = 0, dz = 0, ladoX = 
   if (/^lowerarm_/.test(nome)) return d.mangaLonga ? (listraManga ? 'listra' : d.paleto && t > 0.86 ? 'camisa' : manga) : d.luvaLonga ? 'luva' : 'pele';
   if (/^(hand_|index|middle|ring|pinky|thumb)/.test(nome)) return d.luva || d.luvaLonga || (d.luvaF && /_r$/.test(nome)) ? 'luva' : 'pele';
   // dentro da saia (rígida, presa à pelve): perna escondida — sem calça nem pele (só a canela de baixo aparece)
+  // fenda: a perna do lado da abertura aparece (pele) — 'esquerda' = a perna esquerda do personagem
+  if (d.saia && d.fenda && /^(thigh|calf)_/.test(nome) && nome.endsWith(d.fenda === 'esquerda' ? '_l' : '_r')) return 'pele';
   if (d.saia && (/^thigh_/.test(nome) || (/^calf_/.test(nome) && t < (d.saiaAte || Q_SAIA_ATE) - 0.15))) return 'oculto';
   if (d.macacao && /^thigh_/.test(nome)) {   // perna do macacão até shortAte, com a barra branca e a listra do lado de fora
     const ate = d.shortAte || 0.5;
@@ -3298,7 +3300,7 @@ function qMassa(geo, med, k, P0, N0) {
 function qCorte(id, d) {
   const descalco = !d.sapato || d.sapato === d.pele;
   const chave = id + JSON.stringify([d.semCamisa, d.manga, d.mangaAte, d.mangaLonga, d.short, d.shortAte, !!d.meiao, !!d.luva, !!d.luvaLonga, !!d.luvaF,
-    !!d.paleto, !!d.colete, !!d.gravata, d.golaAlta, !!d.gola, !!d.avental, !!d.listraLado, !!d.listraManga, !!d.saia, descalco, !!d.macacao, d.meiaoDe, !!d.debrum, d.saiaAte, !!d.bota, d.botaDe, d.estilo === 'lenco' ? 1 : d.estilo === 'bandana' ? 2 : Q_PUXADO.has(d.estilo) ? 3 : d.estilo === 'moicano' ? 4 + (d.crista || 1) : 0, d.calcaLarga, d.debrumSo, !!d.sapatilha, Q_UV_ESTAMPA[d.estampaCalca] || 0, Q_UV_ESTAMPA[d.estampaCamisa] || 0, !!d.camisaSolta, !!d.regata, !!d.golaAberta, d.estilo === 'moicano' && !!d.laterais, !!d.camisetaDentro, d.barrigao || 0, d.estilo === 'turbante', d.roupaQ || 0, d.roupaQ && d.modeloCamisa, d.roupaQ && d.modeloCalca, d.roupaQ && d.modeloSapato, !!d.chinelo, d.massaQ || 0, !!d.bandagem]);   // lenço (com volume), bandana (justa), coque (cabelo pintado)
+    !!d.paleto, !!d.colete, !!d.gravata, d.golaAlta, !!d.gola, !!d.avental, !!d.listraLado, !!d.listraManga, !!d.saia, d.saia && d.fenda, descalco, !!d.macacao, d.meiaoDe, !!d.debrum, d.saiaAte, !!d.bota, d.botaDe, d.estilo === 'lenco' ? 1 : d.estilo === 'bandana' ? 2 : Q_PUXADO.has(d.estilo) ? 3 : d.estilo === 'moicano' ? 4 + (d.crista || 1) : 0, d.calcaLarga, d.debrumSo, !!d.sapatilha, Q_UV_ESTAMPA[d.estampaCalca] || 0, Q_UV_ESTAMPA[d.estampaCamisa] || 0, !!d.camisaSolta, !!d.regata, !!d.golaAberta, d.estilo === 'moicano' && !!d.laterais, !!d.camisetaDentro, d.barrigao || 0, d.estilo === 'turbante', d.roupaQ || 0, d.roupaQ && d.modeloCamisa, d.roupaQ && d.modeloCalca, d.roupaQ && d.modeloSapato, !!d.chinelo, d.massaQ || 0, !!d.bandagem]);   // lenço (com volume), bandana (justa), coque (cabelo pintado)
   QX.cortes = QX.cortes || new Map();
   if (QX.cortes.has(chave)) return QX.cortes.get(chave);
   const { geo } = QX.geo[id].find(x => x.m.papel === 'corpo'), med = QX.med[id];
@@ -3953,25 +3955,80 @@ function qTexturaOlho(k, cor) {
     for (let c2 = 0; c2 < 3; c2++) p[i + c2] += (Math.min(255, rgb[c2] * 255 * f) - p[i + c2]) * b; }
   g.putImageData(id, 0, 0); const t = new THREE.CanvasTexture(c); t.flipY = false; QX.texOlho.set(ch, t); return t;
 }
-// saia (ou pano do avental) com esqueleto: anéis elípticos [y, raio para a frente, raio para o lado] de cima para baixo,
-// em metros do modelo a partir da pelve, entre os ângulos a0 e a1 (0 = frente), com n divisões; repU = quantas vezes a
-// estampa se repete na volta. Da pelve para baixo o pano segue cada vez mais as coxas (até 75% na barra): a perna que
-// vai para trás leva a saia junto, em vez de atravessar o pano. Só na montagem do boneco.
-function qSaiaGeo(aneis, a0, a1, n, repU, med, yB = aneis[aneis.length - 1][0]) {   // yB: barra da saia (o avental segue igual)
-  const iP = qIdx('pelvis'), iL = qIdx('thigh_l'), iR = qIdx('thigh_r'), pel = med.pos[iP], sL = Math.sign(med.pos[iL].x - pel.x) || 1;
-  const ji = [], wi = [];
-  const pos = [], uv = [], idx = [], ult = aneis.length - 1, y0 = aneis[ult][0];
-  const larg = (a1 - a0) * aneis.reduce((s, r) => s + (r[1] + r[2]) / 2, 0) / aneis.length;   // estampa sem esticar: v pela altura
-  aneis.forEach(([y, rx, rz], i) => { for (let j = 0; j <= n; j++) { const a = a0 + (a1 - a0) * j / n;
-    const x = Math.sin(a) * rz, h = 0.75 * clamp(y / yB, 0, 1), fl = clamp(0.5 + sL * x / rz, 0, 1);
-    pos.push(pel.x + x, pel.y + y, pel.z + Math.cos(a) * rx); uv.push(j / n * repU, (y - y0) / larg * repU);
-    ji.push(iP, iL, iR, iP); wi.push(1 - h, h * fl, h * (1 - fl), 0); } });
-  for (let i = 0; i < ult; i++) for (let j = 0; j < n; j++) {   // ordem que deixa a face de fora virada para fora
+// perfil do corpo para vestir saia: o raio da pele em volta da pelve (48 setores; ângulo 0 = frente, +x = sin) em fatias de
+// 2 cm, de 25 cm acima a 95 cm abaixo da pelve — o quadril, as nádegas e as coxas de verdade, não uma elipse
+const Q_PERFIL_NB = 48, Q_PERFIL_Y0 = 0.25, Q_PERFIL_DY = 0.02, Q_PERFIL_NH = 61;
+function qPerfilCorpo(id) {
+  QX.perfil = QX.perfil || {}; if (QX.perfil[id]) return QX.perfil[id];
+  const med = QX.med[id], g = QX.geo[id].find(x => x.m.papel === 'corpo').geo, P = g.attributes.position.array, dom = g.userData.dominante;
+  const pel = med.pos[qIdx('pelvis')], R = new Float32Array(Q_PERFIL_NH * Q_PERFIL_NB), ok = /^(pelvis|spine_0[12]|thigh_|calf_)/;
+  const pode = QUATERNIUS.ossos.map(n => ok.test(n));
+  // por direção, o quanto o corpo vai até ali (função suporte: max de p·u): o contorno convexo da fatia — entre as pernas o pano
+  // passa reto de uma coxa à outra, não entra no vão (o raio por setor deixava a saia afundar entre as pernas)
+  const SN = [], CS = []; for (let b = 0; b < Q_PERFIL_NB; b++) { const a = b / Q_PERFIL_NB * 2 * Math.PI; SN.push(Math.sin(a)); CS.push(Math.cos(a)); }
+  for (let v = 0; v < dom.length; v++) { if (!pode[dom[v]]) continue;
+    const dx = P[v * 3] - pel.x, dz = P[v * 3 + 2] - pel.z, h = Math.round((Q_PERFIL_Y0 - (P[v * 3 + 1] - pel.y)) / Q_PERFIL_DY);
+    if (h < 0 || h >= Q_PERFIL_NH) continue;
+    for (const hh of [h - 1, h, h + 1]) if (hh >= 0 && hh < Q_PERFIL_NH) for (let b = 0; b < Q_PERFIL_NB; b++) {
+      const s = dx * SN[b] + dz * CS[b]; if (s > R[hh * Q_PERFIL_NB + b]) R[hh * Q_PERFIL_NB + b] = s; } }
+  QX.perfil[id] = R; return R;
+}
+const qRaioCorpo = (R, y, a) => {   // y a partir da pelve, a em radianos (0 = frente)
+  const hf = clamp((Q_PERFIL_Y0 - y) / Q_PERFIL_DY, 0, Q_PERFIL_NH - 1.001), h = Math.floor(hf), fh = hf - h;
+  const bf = ((a / (2 * Math.PI) * Q_PERFIL_NB) % Q_PERFIL_NB + Q_PERFIL_NB) % Q_PERFIL_NB, b = Math.floor(bf) % Q_PERFIL_NB, b2 = (b + 1) % Q_PERFIL_NB, fb = bf - Math.floor(bf);
+  const r0 = R[h * Q_PERFIL_NB + b] * (1 - fb) + R[h * Q_PERFIL_NB + b2] * fb, r1 = R[(h + 1) * Q_PERFIL_NB + b] * (1 - fb) + R[(h + 1) * Q_PERFIL_NB + b2] * fb;
+  return r0 * (1 - fh) + r1 * fh;
+};
+// saia de pano (18/11/2026, no lugar do cone de 4 anéis): segue o quadril medido no corpo até a parte mais larga e dali
+// cai abrindo conforme `roda` (0 = justa/sereia, que cola na coxa e abre só no fim; 1 = rodada), com pregas que crescem para
+// a barra e a barra com espessura (dobra para dentro). fenda: lado (+1/-1, sinal de x da perna) da abertura na frente,
+// da barra até o meio da coxa. a0..a1: arco (avental = só a frente); folga extra para o avental ficar por cima da saia.
+// Pesos: pelve em cima, coxas cada vez mais para baixo (a perna leva o pano). Guardada por parâmetro (figurantes repetem).
+function qSaiaPano(id, o) {
+  const chave = id + JSON.stringify(o); QX.saias = QX.saias || new Map(); if (QX.saias.has(chave)) return QX.saias.get(chave);
+  const med = QX.med[id], R = qPerfilCorpo(id), iP = qIdx('pelvis'), iL = qIdx('thigh_l'), iR = qIdx('thigh_r'), pel = med.pos[iP];
+  const sL = Math.sign(med.pos[iL].x - pel.x) || 1, a0 = o.a0 ?? -Math.PI, a1 = o.a1 ?? Math.PI, cheia = a1 - a0 > 6.2;
+  const n = Math.max(8, Math.round(56 * (a1 - a0) / (2 * Math.PI))), roda = o.roda ?? 0.6, folga = (o.folga ?? 0.022) + (o.extra || 0);
+  const yT = o.yTopo, yB = o.yBarra, kB = o.kB || 1;
+  // anéis: mais densos em cima (onde o quadril muda); o mais largo do quadril (yQ) é onde a saia começa a cair
+  const NR = 18, ys = []; for (let i = 0; i < NR; i++) { const t = i / (NR - 1); ys.push(yT + (yB - yT) * Math.pow(t, 1.25)); }
+  let yQ = ys[0], mQ = 0; for (const y of ys) { if (y < -0.24) break; let m = 0; for (let j = 0; j < 16; j++) m += qRaioCorpo(R, y, j / 16 * 2 * Math.PI); if (m > mQ) { mQ = m; yQ = y; } }
+  const k = Math.round(7 + 7 * roda), ampMax = 0.018 + 0.05 * roda;   // pregas: quantas e quão fundas na barra
+  const pos = [], uv = [], ji = [], wi = [], idx = [], rQ = new Float32Array(n + 1), rAnt = new Float32Array(n + 1);
+  const larg = (a1 - a0) * 0.2, ang = j => a0 + (a1 - a0) * j / n;
+  const vert = (x, y, z, u, v) => { pos.push(pel.x + x, pel.y + y, pel.z + z); uv.push(u, v);
+    const h = 0.8 * clamp(y / yB, 0, 1), fl = clamp(0.5 + sL * x / 0.1, 0, 1); ji.push(iP, iL, iR, iP); wi.push(1 - h, h * fl, h * (1 - fl), 0); };
+  ys.forEach((y, i) => { for (let j = 0; j <= n; j++) { const a = ang(j), base = qRaioCorpo(R, y, a) * kB + folga;
+    let r = base;
+    if (y < yQ) { const t = clamp((yQ - y) / (yQ - yB), 0, 1);
+      if (roda >= 0.3) r = Math.max(base, rAnt[j], rQ[j] * (1 + roda * 0.55 * Math.pow(t, 1.35)));   // cai abrindo, nunca entra
+      else r = Math.max(base, rAnt[j] * (1 - 0.25 * roda) - 0.006) * (1 + (0.35 + roda) * Math.pow(Math.max(0, (t - 0.7) / 0.3), 1.6));   // sereia: cola nas pernas e abre no fim
+      r *= 1 + ampMax * Math.pow(t, 1.3) * Math.sin(k * a + 0.8 * Math.sin(3 * a)); }
+    else rQ[j] = Math.max(rQ[j], r);
+    rAnt[j] = r; vert(Math.sin(a) * r, y, Math.cos(a) * r, j / n * (o.repU || 3), (y - yB) / larg); } });
+  // barra com espessura: dobra 1,2 cm para dentro e sobe 3 cm (de baixo e de dentro a saia tem pano, não uma borda de papel)
+  for (const [dy, dr] of [[0, -0.012], [0.03, -0.012]]) for (let j = 0; j <= n; j++) { const a = ang(j), r = rAnt[j] + dr;
+    vert(Math.sin(a) * r, yB + dy, Math.cos(a) * r, j / n * (o.repU || 3), -(dy + 0.02) / larg); }
+  const nAn = NR + 2, aF = o.fenda ? sL * o.fenda * 0.75 : 0, yF = o.fenda ? yQ + (yB - yQ) * 0.35 : 0;
+  for (let i = 0; i < nAn - 1; i++) for (let j = 0; j < n; j++) {
+    if (o.fenda) { const y = i < NR ? ys[i] : yB, t = clamp((y - yF) / (yB - yF), 0, 1), am = (ang(j) + ang(j + 1)) / 2;   // fenda: aberta de yF até a barra
+      if (y < yF + 0.001 && Math.abs(Math.atan2(Math.sin(am - aF), Math.cos(am - aF))) < 0.06 + 0.32 * t) continue; }
     const a = i * (n + 1) + j, b = a + n + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('skinIndex', new THREE.Uint8BufferAttribute(ji, 4)); g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(wi, 4));
-  g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere(); g.userData.amostra = qAmostraExtremos(g); return g;
+  g.setIndex(idx); g.computeVertexNormals();
+  if (cheia) { const N = g.attributes.normal.array; for (let i = 0; i < nAn; i++) { const p = i * (n + 1) * 3, q = (i * (n + 1) + n) * 3;   // costura de trás sem quina
+    for (let c = 0; c < 3; c++) { const m = (N[p + c] + N[q + c]) / 2; N[p + c] = N[q + c] = m; } } }
+  g.computeBoundingSphere(); g.userData.amostra = qAmostraExtremos(g); g.userData.doCache = true;
+  if (QX.saias.size > 30) QX.saias.clear();
+  QX.saias.set(chave, g); return g;
+}
+function qBarraSaiaPatch(sh) {   // barraSaia: faixas [x,y] e [z,w] da altura de repouso na cor uBarra
+  toonPatch(sh); sh.uniforms.uBarra = { value: this.userData.barra[0] }; sh.uniforms.uFaixas = { value: this.userData.barra[1] };
+  sh.vertexShader = 'varying float vBarraY;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vBarraY = position.y;');
+  sh.fragmentShader = 'uniform vec3 uBarra;\nuniform vec4 uFaixas;\nvarying float vBarraY;\n' + sh.fragmentShader.replace('#include <color_fragment>',
+    '#include <color_fragment>\n  if ( ( vBarraY > uFaixas.x && vBarraY < uFaixas.y ) || ( vBarraY > uFaixas.z && vBarraY < uFaixas.w ) ) diffuseColor.rgb = uBarra;');
 }
 // ---------- rascunhos (nada é criado por quadro) ----------
 const QR = { e: new THREE.Euler(), q1: new THREE.Quaternion(), q2: new THREE.Quaternion(), q3: new THREE.Quaternion(), qq: new THREE.Quaternion(),
@@ -4345,17 +4402,21 @@ class RigQ {
       // saia medida no corpo (unidades do modelo, a partir da pelve): começa acima da cintura (cobre a barra da blusa),
       // abre no quadril e cai até saiaAte da canela; o quadril e as coxas por dentro ficam escondidos (qRegiao)
       const kB = 1 + (B - 1) * 0.5, cint = med.cintura - pel.y, joelho = med.pos[this.iOsso('calf_l')].y, tornozelo = med.pos[this.iOsso('foot_l')].y;
-      const yBarra = joelho + (tornozelo - joelho) * (d.saiaAte || Q_SAIA_ATE) - pel.y, rx = cr.fundo + 0.03, rz = cr.lado + 0.03;
-      const aneis = [[cint + 0.025, rx, rz], [cint * 0.35, rx * 1.1 * kB, rz * 1.08 * kB], [-0.06, rx * 1.2 * kB, rz * 1.18 * kB], [yBarra, rx * 1.4 * kB, rz * 1.32 * kB]];
-      const pano = (geo, mat) => { this.geosProprias.push(geo); const sm = new THREE.SkinnedMesh(geo, mat); sm.frustumCulled = false; this.modelo.add(sm); sm.bind(this.esqueleto, new THREE.Matrix4()); };
+      const yBarra = joelho + (tornozelo - joelho) * (d.saiaAte || Q_SAIA_ATE) - pel.y, yTopo = cint + 0.025;
+      // a saia do cache é compartilhada entre bonecos: não entra em geosProprias (o descarte não pode liberá-la)
+      const pano = (geo, mat) => { if (!geo.userData.doCache) this.geosProprias.push(geo); const sm = new THREE.SkinnedMesh(geo, mat); sm.frustumCulled = false; this.modelo.add(sm); sm.bind(this.esqueleto, new THREE.Matrix4()); };
       const ex = { skinning: true, side: THREE.DoubleSide };
-      pano(qSaiaGeo(aneis, -Math.PI, Math.PI, 20, 3, med), d.estampaSaia ? M('#ffffff', texEstampa(d.estampaSaia, d.saia), ex) : M(d.saia, texEstampa('tecido'), { ...relevo('tecido', undefined, 0.6), ...ex }));
-      if (d.avental) {   // pano do avental por cima da saia, na frente, até um palmo acima da barra
-        const av = aneis.map(([y, a, b], i) => [i === aneis.length - 1 ? y + 0.08 : y, a + 0.012, b + 0.012]);
-        pano(qSaiaGeo(av, -0.95, 0.95, 10, 1, med, yBarra), M('#ffffff', texEstampa(d.estampaAvental || 'tecido', d.avental), ex));
+      const so = { yTopo: +yTopo.toFixed(3), yBarra: +yBarra.toFixed(3), roda: d.saiaRoda ?? 0.6, kB: +kB.toFixed(3), fenda: d.fenda === 'esquerda' ? 1 : d.fenda === 'direita' ? -1 : 0 };
+      pano(qSaiaPano(this.idCorpo, so), d.estampaSaia ? M('#ffffff', texEstampa(d.estampaSaia, d.saia), ex) : M(d.saia, texEstampa('tecido'), { ...relevo('tecido', undefined, 0.6), ...ex }));
+      if (d.barraSaia) {   // barrado: duas faixas finas perto da barra (renda da saia de baiana), no próprio pano, pela altura de repouso
+        const mt = this.modelo.children[this.modelo.children.length - 1].material, y0 = pel.y + yBarra;
+        mt.userData.barra = [new THREE.Color(d.barraSaia), new THREE.Vector4(y0 + 0.035, y0 + 0.05, y0 + 0.07, y0 + 0.08)]; mt.onBeforeCompile = qBarraSaiaPatch; }
+      if (d.avental) {   // pano do avental por cima da saia, na frente, até um palmo acima da barra, com as mesmas pregas
+        pano(qSaiaPano(this.idCorpo, { ...so, yBarra: +(yBarra + 0.08).toFixed(3), a0: -0.95, a1: 0.95, extra: 0.014, fenda: 0, repU: 1 }), M('#ffffff', texEstampa(d.estampaAvental || 'tecido', d.avental), ex));
       }
       // faixa (laço do avental) na cintura, por cima da saia e do avental
-      fx0 = (aneis[0][1] + 0.02) / sQ; fz0 = (aneis[0][2] + 0.02) / sQ; yc = (cint + 0.005) / sQ;
+      const rCint = qRaioCorpo(qPerfilCorpo(this.idCorpo), cint, 0) + 0.04, rCintL = qRaioCorpo(qPerfilCorpo(this.idCorpo), cint, Math.PI / 2) + 0.04;
+      fx0 = rCint / sQ; fz0 = rCintL / sQ; yc = (cint + 0.005) / sQ;
     } else if (d.avental) {
       GEO.aventalSaia = GEO.aventalSaia || new THREE.CylinderGeometry(1, 0.84, 1, 10, 1, true, Math.PI / 2 - 0.95, 1.9);
       peca(this.quadril, GEO.aventalSaia, M('#ffffff', texEstampa(d.estampaAvental || 'tecido', d.avental)), 0.315 * B * F, 0.6, 0.34 * F, 0, -0.25, 0, false).rotation.x = Math.PI;
@@ -6427,7 +6488,7 @@ Object.assign(DB.personagens, {
     // cores um tom abaixo da foto: a luz toon clareia e satura (lenço laranja forte, blusa malva modelada (roupaQ), saia ameixa até o meio da canela,
     // perna de fora, avental creme de flores laranja e vermelhas, óculos de aro dourado fino, chinelo de dedo; cabelo crespo grisalho
     // em volume atrás e dos lados; rugas de senhora e meio sorriso torto de boca fechada, pintados no rosto)
-    visual: { roupaQ: true, pele: '#6b3f22', camisa: '#6e3a5c', manga: true, mangaAte: 0.5, calca: '#6b3f22', saia: '#3e1f36', saiaAte: 0.5, avental: '#e2cca2', estampaAvental: 'florido',
+    visual: { roupaQ: true, pele: '#6b3f22', camisa: '#6e3a5c', manga: true, mangaAte: 0.5, calca: '#6b3f22', saia: '#3e1f36', saiaAte: 0.5, saiaRoda: 0.5, avental: '#e2cca2', estampaAvental: 'florido',
       faixa: '#e8d4a0', chinelo: '#efe6cf', estilo: 'lenco', corLenco: '#e8650f', cabelo: '#8a8a8a', oculos: 'grau', oculosPonta: true, corLente: '#b08060', corAro: '#9a7a3a', sobrancelhaEscura: true,
       brincos: '#e8b830', segura: 'travessa', rugas: 1, bocaPintada: 'torto', feminino: true, busto: 1.25, barriga: 1.35, larg: 1.2, escala: 0.9, bravo: true } },
   josue:      { nome: 'IRMÃO JOSUÉ', emoji: '📖', cor: '#4f86c6' },
@@ -6436,7 +6497,7 @@ Object.assign(DB.personagens, {
   // pulso esquerdo, chinelo branco; ervas erguidas ao lado da cabeça; rugas leves e sorriso de boca fechada.
   // Sem roupaQ: o vestido modelado é curto e sem manga, e a camiseta não faz a bata larga de manga até o cotovelo
   iara:      { nome: 'MÃE IARA', emoji: '🌿', cor: '#f2efe6', pose: 'benzendo',
-    visual: { pele: '#7a4526', camisa: '#ece6d6', manga: true, camisaSolta: true, calca: '#7a4526', saia: '#ece6d6', saiaAte: 0.92, faixa: '#ece6d6', faixaLaco: true,
+    visual: { pele: '#7a4526', camisa: '#ece6d6', manga: true, camisaSolta: true, calca: '#7a4526', saia: '#ece6d6', saiaAte: 0.92, saiaRoda: 1.4, barraSaia: '#a89c80', faixa: '#ece6d6', faixaLaco: true,
       chinelo: '#ece6d6', estilo: 'turbante', corTurbante: '#ece6d6', guias: true, guiasLongas: true, brincos: '#d8d8d8', argolaGrande: true,
       pulseira: '#d8d8d8', pulseiraSo: 'esquerdo', segura: 'ervas', rugas: 0.4, bocaPintada: 'fechado', feminino: true, escala: 1.03, larg: 1.05 } },
   davi:       { nome: 'PASTORZINHO DAVI', emoji: '🙏🏾', cor: '#ffd21f', pose: 'pregando',
@@ -6449,7 +6510,7 @@ Object.assign(DB.personagens, {
   // pedras pink, sombra pink e delineado, sobrancelha escura, colar rente com pingente pink, leque plissado ao lado do rosto. Sem roupaQ: o vestido
   // modelado é curto e liso (perde o paetê)
   kika:       { nome: 'KIKA DIAMANTE', emoji: '👑', cor: '#ff3dc8', pose: 'leque',
-    visual: { pele: '#c58a5a', camisa: '#ff3dc8', estampaCamisa: 'paete', calca: '#ff3dc8', estampaCalca: 'paete', saia: '#ff3dc8', estampaSaia: 'paete',
+    visual: { pele: '#c58a5a', camisa: '#ff3dc8', estampaCamisa: 'paete', calca: '#ff3dc8', estampaCalca: 'paete', saia: '#ff3dc8', estampaSaia: 'paete', saiaRoda: 0.1, saiaAte: 1, fenda: 'esquerda',
       sapato: '#ff3dc8', sola: '#c0157a', luvaLonga: '#e0218a', segura: 'leque', corLeque: '#ff4fc0',
       estilo: 'peruca', cabelo: '#f2dfa0', coroa: '#eef0ff', corPedra: '#ff3dc8', colar: '#eef0ff', pingente: '#ff3dc8', brincos: '#eef0ff', batom: '#d4147a',
       sobrancelhaEscura: true, sombra: '#c0157a', delineado: '#141010', bocaPintada: 'sorriso',
