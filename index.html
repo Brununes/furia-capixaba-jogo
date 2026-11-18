@@ -3182,7 +3182,11 @@ function qCorte(id, d) {
     if (cob && (((rr === 'camisa' || rr === 'gravata') && cob.camisa) || (rr === 'calca' && cob.calca && (cob.calcaM || !(/^calf_/.test(nomes[k]) && t > cob.canela - 0.04))))) {   // calça moderna: abaixo dela, pele (corsário, saia)
       // pele que a peça cobre de verdade (pano por cima, pela normal) sai do corpo: senão os triângulos dobram (o teste
       // de peso da cena passava do limite); no decote, na cava e na barra a pele continua
-      rr = qCoberto(rr === 'calca' ? cob.calca : cob.camisa, x, y, z, N[i * 3] / 127, N[i * 3 + 1] / 127, N[i * 3 + 2] / 127, k) ? 'oculto' : 'pele';
+      // onde a peça moderna não chega mas o visual pede camisa (a cintura entre a camiseta e a calça, atrás do ombro), fica
+      // a camisa em geometria, na mesma cor: antes ficava pele, um vão com dentes
+      const coberto = qCoberto(rr === 'calca' ? cob.calca : cob.camisa, x, y, z, N[i * 3] / 127, N[i * 3 + 1] / 127, N[i * 3 + 2] / 127, k);
+      // (só nas partes do corpo que a peça cobre: a regata não ganha manga da casca)
+      rr = coberto ? 'oculto' : (rr === 'camisa' && cob.camisaM && cob.camisa.userData.partes && cob.camisa.userData.partes.has(qParte(k))) || (rr === 'calca' && cob.calcaM && !/^calf_/.test(nomes[k])) ? rr : 'pele';   // (na canela, abaixo da calça moderna, pele: corsário, saia)
     }
     // peça moderna: vem no comprimento dela (manga comprida do moletom, regata, bermuda...): a pele que ela cobre sai,
     // qualquer que seja a região (menos cabeça, mãos e pés)
@@ -3197,6 +3201,7 @@ function qCorte(id, d) {
   // folga de cada vértice numa peça: abre na barra da bermuda/calça e da manga curta; a camisa fica solta embaixo
   const iThigh = /^thigh_/, iCalf = /^calf_/, iUp = /^upperarm_/, iTronco = /^(pelvis|spine_0[12])/, iClav = /^clavicle_/;
   const folga = (r, v) => { const n = nomes[dom[v]], t = tv[v]; let f = Q_FOLGA[Q_REG[r]] || 0.012;
+    if (cob && ((cob.camisaM && Q_REG[r] === 'camisa') || (cob.calcaM && Q_REG[r] === 'calca'))) return 0.004;   // sob a camisa modelada: só tapa os vãos, rente à pele (senão aparecia por cima dela)
     if (iThigh.test(n)) f += (d.short && !d.macacao ? 0.02 : 0.006) * t; else if (iCalf.test(n)) f += (Q_REG[r] === 'bota' ? 0.003 : 0.01) * t;   // cano da bota justo até o pé
     else if (iUp.test(n) && (d.mangaAte || 1) < 1) f += 0.014 * t / (d.mangaAte || 1);
     else if (iTronco.test(n) && !d.macacao && P[v * 3 + 1] > med.cintura) f += 0.008 * clamp((med.cintura + 0.22 - P[v * 3 + 1]) / 0.22, 0, 1);
@@ -3241,7 +3246,7 @@ function qCorte(id, d) {
       const a = I[t], b = I[t + 1], c = I[t + 2]; idx.push(vert(r, a, null), vert(r, b, null), vert(r, c, null));
       for (const [p, q, o] of [[a, b, c], [b, c, a], [c, a, b]]) { const k = ch(p, q); const e = arestas.get(k); if (e) e.n++; else arestas.set(k, { p, q, o, n: 1 }); } }
     if (idx.length === ini) continue;
-    const solta = Q_REG[r] === 'camisa' && d.camisaSolta && !d.paleto && !d.macacao;   // camiseta solta: cai reta, sem os músculos, com a aba curta
+    const solta = Q_REG[r] === 'camisa' && d.camisaSolta && !d.paleto && !d.macacao && !(cob && cob.camisaM);   // (com a camisa modelada a aba solta saía por baixo dela, como uma faixa)   // camiseta solta: cai reta, sem os músculos, com a aba curta
     const FP = Q_REG[r] === 'paleto' ? qPaletoSolto(r, X) : Q_REG[r] === 'colete' ? qPaletoSolto(r, X, false) : solta ? qPaletoSolto(r, X, Q_CAMISETA_RETA) : null;   // paletó: cai reto, sem os músculos; colete: só sem os músculos; camiseta: meio caminho (reta, virava um barril no peito largo)
     // borda da peça: segue os triângulos do corpo (serrilhada); alisa a linha da barra puxando cada vértice da borda
     // para a média dos vizinhos de borda (4 passadas). A pele das bordas continua no corpo, então não abre buraco.
@@ -3341,7 +3346,8 @@ function qCorte(id, d) {
   const fica = [];
   // sai só a pele toda coberta (os três vértices na roupa); a da borda fica, por baixo da barra alisada
   for (let t = 0; t < I.length; t += 3) { const r = regTri[t / 3];
-    if (r === 0 || (Q_REG[r] !== 'sapato' && Q_REG[r] !== 'oculto' && (!reg[I[t]] || !reg[I[t + 1]] || !reg[I[t + 2]]))) fica.push(I[t], I[t + 1], I[t + 2]); }
+    // (a borda da pele escondida também fica: debaixo da barra larga da bermuda modelada, o buraco aparecia em dentes)
+    if (r === 0 || (Q_REG[r] !== 'sapato' && (Q_REG[r] !== 'oculto' || cob) && (!reg[I[t]] || !reg[I[t + 1]] || !reg[I[t + 2]]))) fica.push(I[t], I[t + 1], I[t + 2]); }
   const corpo = new THREE.BufferGeometry();
   for (const k of ['position', 'normal', 'uv', 'skinIndex', 'skinWeight']) corpo.setAttribute(k, A[k]);
   if (P !== A.position.array) { corpo.setAttribute('position', new THREE.BufferAttribute(P, 3)); corpo.setAttribute('normal', new THREE.BufferAttribute(N, 3, true)); }
@@ -3713,7 +3719,7 @@ class RigQ {
         const C = qCorte(id, d);
         this.malhaCorpo = malha(C.corpo, M('#ffffff', qTexturaPele(id, d.pele), { skinning: true, gradientMap: GRAD_PELE }));
         if (C.roupa) this.malhaRoupa = malha(C.roupa, C.roupa.userData.pecas.map(p => { const [cor, est] = qCorPeca(d, p), t = texturasRoupa(cor || '#888888', est);
-          if (p === 'calca' && qUsaRoupaQ(d, 'calca')) return M(cor || '#888888', null, { skinning: true, side: THREE.DoubleSide });   // canela da calça comprida abaixo da modelada: pano liso (a trama destoava)
+          if ((p === 'calca' && qUsaRoupaQ(d, 'calca')) || (p === 'camisa' && qUsaRoupaQ(d, 'camisa'))) return M(cor || '#888888', null, { skinning: true, side: THREE.DoubleSide });   // canela da calça comprida abaixo da modelada: pano liso (a trama destoava)
           return M(t.cor, t.map, { normalMap: t.normal, normalScale: new THREE.Vector2(0.6, 0.6), skinning: true, side: THREE.DoubleSide }); }));
         // roupa modelada por cima (camisa e calça de verdade); a do qCorte fica embaixo, rente à pele
         this.pecasQ = [];   // peças modeladas vestidas (testes)
@@ -3722,7 +3728,9 @@ class RigQ {
           const listras = peca === 'camisa' && d.estampaCamisa === 'listras', f = g.userData.fonte, est = peca === 'camisa' ? d.estampaCamisa : d.estampaCalca;
           // pano principal na cor do personagem; os outros materiais da peça (camisa branca do terno, gravata, capuz) na cor
           // própria — a gravata segue visual.gravata. Peça do camponês: textura tingida
-          const mats = g.userData.grupos.map(gr => { let mt;
+          // calcaLisa / camisaLisa: a peça toda no pano principal (sem o cós e as listras brancas da bermuda, sem o branco do colete)
+          const lisa = peca === 'camisa' ? d.camisaLisa : d.calcaLisa;
+          const mats = g.userData.grupos.map(gr0 => { let mt; const gr = lisa ? { ...gr0, principal: 1 } : gr0;
             if (!f.modular) mt = M('#ffffff', qTexturaRoupa(f.tex, cor, qPanoPrincipal(id, peca), f.modelo === 'tunica'), { skinning: true, side: THREE.DoubleSide });
             else if (gr.principal && est && est !== 'listras') {   // pano principal estampado (projeção pelos 3 eixos)
               const t = texturasRoupa(cor, est); mt = M(t.cor, t.map, { skinning: true, side: THREE.DoubleSide });
@@ -5892,11 +5900,11 @@ Object.assign(DB.inimigos, {
     // 1º = a foto: moicano amarelo espetado com as laterais raspadas, argola na orelha, sorriso de deboche, regata verde-água
     // de cava funda, bermuda amarela larga e descalço. Roupa modelada (roupaQ), um modelo por variação: regata (a foto),
     // colete aberto por cima da camiseta branca (bandana), moletom (boné) e camiseta (o playboy); bermuda em todos
-    visuais: [{ roupaQ: true, modeloCamisa: 'regata', pele: '#8f5530', camisa: '#0f7a6a', calca: '#c88a0a', short: true, shortAte: 0.85, estilo: 'moicano', crista: 1.7, laterais: '#3a2416', sobrancelhaEscura: true, cabelo: '#e0b012', brincos: '#c8ccd2', sorriso: true, bravo: true, larg: 0.85 },
-              { roupaQ: true, modeloCamisa: 'colete', pele: '#c68a5a', camisa: '#a8286a', calca: '#222', short: true, shortAte: 0.85, estilo: 'bandana', faixaCabeca: '#c8327e', bravo: true, larg: 0.85 },
-              { roupaQ: true, modeloCamisa: 'moletom', pele: '#6e4428', camisa: '#d8a810', calca: '#1f4fd8', short: true, shortAte: 0.85, estilo: 'bone', corBone: '#19963e', sorriso: true, bravo: true, larg: 0.85, meiao: '#f4f1e8' },
+    visuais: [{ roupaQ: true, modeloCamisa: 'regata', calcaLisa: true, pele: '#8f5530', camisa: '#0f7a6a', calca: '#c88a0a', short: true, shortAte: 0.85, estilo: 'moicano', crista: 1.7, laterais: '#3a2416', sobrancelhaEscura: true, cabelo: '#e0b012', brincos: '#c8ccd2', sorriso: true, bravo: true, larg: 0.85 },
+              { roupaQ: true, modeloCamisa: 'colete', calcaLisa: true, pele: '#c68a5a', camisa: '#a8286a', calca: '#222', short: true, shortAte: 0.85, estilo: 'bandana', faixaCabeca: '#c8327e', bravo: true, larg: 0.85 },
+              { roupaQ: true, modeloCamisa: 'moletom', calcaLisa: true, pele: '#6e4428', camisa: '#d8a810', calca: '#1f4fd8', short: true, shortAte: 0.85, estilo: 'bone', corBone: '#19963e', sorriso: true, bravo: true, larg: 0.85, meiao: '#f4f1e8' },
               // o playboy contratado pelo bando: camisa polo, bermuda e topete
-              { roupaQ: true, modeloCamisa: 'camiseta', pele: '#f0c8a6', camisa: '#e8609e', calca: '#d8c8a0', short: true, estilo: 'topete', cabelo: '#c9a050', oculos: true, bravo: true, larg: 0.85, sapato: '#f4f1e8', manga: true, mangaAte: 0.45 }]
+              { roupaQ: true, modeloCamisa: 'camiseta', calcaLisa: true, pele: '#f0c8a6', camisa: '#e8609e', calca: '#d8c8a0', short: true, estilo: 'topete', cabelo: '#c9a050', oculos: true, bravo: true, larg: 0.85, sapato: '#f4f1e8', manga: true, mangaAte: 0.45 }]
   },
   brutamontes: {
     hp: 85, vel: 1.7, golpes: ['socao'], pontos: 300, armadura: true, reacao: [0.5, 1.1],
@@ -5915,9 +5923,9 @@ Object.assign(DB.inimigos, {
     // pé descalço. Camisa modelada estampada (roupaQ 'camisa': a havaiana sai nítida, mas a gola fecha) e a bermuda lisa
     // na casca (a moderna tem listras brancas e dentes na barra). 2º: a camisa florida aberta no peito (casca, golaAberta);
     // 3º: colete florido modelado por cima da camiseta branca
-    visuais: [{ roupaQ: 'camisa', modeloCamisa: 'camiseta', pele: '#9a6038', camisa: '#18682a', estampaCamisa: 'havaiana', manga: true, mangaAte: 0.55, calca: '#cfc0a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', cabelo: '#141010', sorriso: true, bravo: true },
+    visuais: [{ roupaQ: true, modeloCamisa: 'camiseta', calcaLisa: true, pele: '#9a6038', camisa: '#18682a', estampaCamisa: 'havaiana', manga: true, mangaAte: 0.55, calca: '#cfc0a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', cabelo: '#141010', sorriso: true, bravo: true },
               { pele: '#6e4428', camisa: '#2a78b8', estampaCamisa: 'floral', camisaSolta: true, golaAberta: true, manga: true, mangaAte: 0.55, calca: '#d8d8d0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', sorriso: true, bravo: true },
-              { roupaQ: 'camisa', modeloCamisa: 'colete', pele: '#c48a5e', camisa: '#d0681a', estampaCamisa: 'floral', manga: true, mangaAte: 0.55, calca: '#d8c8a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', barba: true, cabelo: '#5a3a22', bravo: true }]
+              { roupaQ: true, modeloCamisa: 'colete', calcaLisa: true, pele: '#c48a5e', camisa: '#d0681a', estampaCamisa: 'floral', manga: true, mangaAte: 0.55, calca: '#d8c8a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', barba: true, cabelo: '#5a3a22', bravo: true }]
   },
   // ---- cachorro (quadrúpede: modelo próprio em motor/modelo.js → montarCao) ----
   cao: {
@@ -5958,7 +5966,7 @@ Object.assign(DB.inimigos, {
     // sorrisão, corrente grossa prateada, bermuda terracota larga de hibiscos creme com cordão branco, tênis brancos.
     // Na casca (conferido 18/11/2026): a bermuda modelada estampada é curta, tem cós e 2 listras brancas na barra e, sem
     // camisa, mostra dentes na cintura e na barra
-    visuais: [{ pele: '#a8643a', semCamisa: true, camisa: '#a8643a', calca: '#b85530', estampaCalca: 'hibisco', short: true, calcaLarga: 0.6, cordao: '#efe8dc', sapato: '#e8e8e8',
+    visuais: [{ roupaQ: 'calca', modeloCalca: 'bermuda', calcaLisa: true, pele: '#a8643a', semCamisa: true, camisa: '#a8643a', calca: '#b85530', estampaCalca: 'hibisco', short: true, calcaLarga: 0.6, cordao: '#efe8dc', sapato: '#e8e8e8',
       estilo: 'moicano', cabelo: '#3a2214', oculos: true, corLente: '#1c2c44', corrente: true, corCorrente: '#7a8088', sorriso: true, musculo: 1.5, larg: 1.25, escala: 1.48 }]
   },
   navalha: {   // Cap. 5 · Morro
@@ -6008,7 +6016,7 @@ Object.assign(DB.personagens, {
   // joelho (a do camponês: a moderna tem listras brancas) com bolso cargo, descalço, cabelo preto liso com franja, colar de
   // contas escuras com sementes claras e pingente, remo de madeira apoiado no ombro
   kaue:       { nome: 'KAUÊ', emoji: '🛶', cor: '#3fbf6a', pose: 'remo',
-    visual: { roupaQ: true, modeloCamisa: 'camiseta', modeloCalca: 'tunica', pele: '#9a5a32', camisa: '#24703a', manga: true, mangaAte: 0.6, camisaSolta: true, calca: '#2e2e33', short: true, shortAte: 0.8, bolsos: true,
+    visual: { roupaQ: true, modeloCamisa: 'camiseta', modeloCalca: 'bermuda', calcaLisa: true, pele: '#9a5a32', camisa: '#24703a', manga: true, mangaAte: 0.6, camisaSolta: true, calca: '#2e2e33', short: true, shortAte: 0.8, bolsos: true,
       estilo: 'franja', cabelo: '#0d0d0d', colar: '#1e1a18', sementes: '#e2cca2', segura: 'remo', larg: 0.92 } },
   // regata rosa (casca: a regata funda fica no qCorte), bermuda cargo oliva modelada (roupaQ; a do camponês, lisa) com cinto marrom, tênis azul-marinho de sola branca, quepe branco de capitã com âncora e
   // óculos escuros na faixa, trança castanha pelo ombro, argolas prateadas, apito, gargalhada; aponta com a outra mão na cintura
