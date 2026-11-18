@@ -1559,6 +1559,37 @@ function plantarPe(perna, giro, p, j, ab) { perna.tor.rotation.set(0, -giro * Ma
 const LENCO_CACHOS = [];
 for (let i = 0; i < 90; i++) { const yy = 1 - (i + 0.5) / 45, rr = Math.sqrt(1 - yy * yy), a = i * 2.39996, dx = Math.cos(a) * rr, dz = Math.sin(a) * rr;
   if (dx < -0.3 && yy < 0.6) LENCO_CACHOS.push([-0.05 + dx * 0.125, 0.21 + yy * 0.12, dz * 0.15, 0.034 + 0.009 * (i % 3)]); }
+// afro crespo (boneco Quaternius, 18/11/2026): esfera de medida 1 com a superfície em cachos — um domo em volta de cada centro
+// (espiral de ouro, sem padrão) e vinco onde dois cachos se encontram; o contorno sai ondulado e o toon marca cada cacho.
+// Uma malha só (~2,7 mil triângulos) no lugar de dezenas de bolinhas; a costura da esfera fica atrás (x −1)
+function geoAfroCrespo() {
+  const g = new THREE.SphereGeometry(1, 44, 32), p = g.attributes.position, n = 84, C = [], v = new THREE.Vector3(), ac = Math.sqrt(4 / n);
+  for (let i = 0; i < n; i++) { const y = 1 - 2 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), a = i * 2.39996; C.push([Math.cos(a) * r, y, Math.sin(a) * r]); }
+  for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).normalize();
+    let m1 = -2, m2 = -2; for (const c of C) { const d = v.x * c[0] + v.y * c[1] + v.z * c[2]; if (d > m1) { m2 = m1; m1 = d; } else if (d > m2) m2 = d; }
+    const t = clamp((Math.acos(Math.min(1, m2)) - Math.acos(Math.min(1, m1))) / ac, 0, 1), h = 1 - (1 - t) * (1 - t);   // 0 no vinco, 1 no meio do cacho
+    v.multiplyScalar(0.955 + 0.075 * h); p.setXYZ(i, v.x, v.y, v.z); }
+  g.computeVertexNormals(); return g;
+}
+// calombo crespo leve (18/11, puffs da Lalinha): a mesma superfície em cachos numa esfera de poucos gomos (~250 triângulos)
+function geoCrespoLeve() {
+  const g = new THREE.SphereGeometry(1, 14, 10), p = g.attributes.position, C = [], v = new THREE.Vector3(), n = 12, ac = Math.sqrt(4 / n);
+  for (let i = 0; i < n; i++) { const y = 1 - 2 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), a = i * 2.39996; C.push([Math.cos(a) * r, y, Math.sin(a) * r]); }
+  for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).normalize(); let m1 = -2, m2 = -2;
+    for (const c of C) { const d = v.x * c[0] + v.y * c[1] + v.z * c[2]; if (d > m1) { m2 = m1; m1 = d; } else if (d > m2) m2 = d; }
+    const t = clamp((Math.acos(Math.min(1, m2)) - Math.acos(Math.min(1, m1))) / ac, 0, 1); v.multiplyScalar(0.93 + 0.1 * (1 - (1 - t) * (1 - t))); p.setXYZ(i, v.x, v.y, v.z); }
+  g.computeVertexNormals(); return g;
+}
+// twist (dreadAlto no boneco Quaternius): fio enrolado de medida 1 que nasce na origem, sobe e cai em arco para +x, em gomos
+// (o raio pulsa ao longo do fio) e com a ponta fechada; ~160 triângulos
+function geoTwist() {
+  const curva = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.08, 0.42, 0), new THREE.Vector3(0.36, 0.7, 0), new THREE.Vector3(0.66, 0.52, 0), new THREE.Vector3(0.8, 0.12, 0)]);
+  const nT = 16, nR = 5, g = new THREE.TubeGeometry(curva, nT, 0.11, nR, false), p = g.attributes.position, c = new THREE.Vector3();
+  for (let i = 0; i <= nT; i++) { const t = i / nT, k = (0.74 + 0.34 * Math.abs(Math.sin(t * Math.PI * 4.5))) * (t > 0.86 ? Math.max(0.05, (1 - t) / 0.14) : 1);
+    curva.getPointAt(t, c);
+    for (let j = 0; j <= nR; j++) { const q = i * (nR + 1) + j; p.setXYZ(q, c.x + (p.getX(q) - c.x) * k, c.y + (p.getY(q) - c.y) * k, c.z + (p.getZ(q) - c.z) * k); } }
+  g.computeVertexNormals(); return g;
+}
 // penteado, chapéus, lenços e enfeites da cabeça (estilo, capita, foneCabeca, coroa, faixaCabeca, rabo...).
 // cab: grupo da cabeça (x = frente, y = cima; crânio de 0,168 × 0,21 × 0,155 com centro em y 0,225)
 function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
@@ -1572,19 +1603,20 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
     peca(cab, geo, mat, r, L, r, x + dx * L / 2, y + dy * L / 2, z + dz * L / 2, false).quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz));
     return [x + dx * L, y + dy * L, z + dz * L]; };
   if ((est === 'dreadAlto' || est === 'topete') && d.naQ) {   // boneco Quaternius: as laterais rentes são o cabelo da malha (Hair_Buzzed); aqui só o volume do alto
-    peca(cab, GEO.esfera, cabelo, 0.15, 0.07, 0.13, est === 'topete' ? 0.01 : -0.02, 0.4, 0, false);   // base cheia no alto
-    const n = est === 'topete' ? 11 : 28;
+    peca(cab, GEO.esfera, cabelo, 0.15, est === 'topete' ? 0.07 : 0.09, 0.13, est === 'topete' ? 0.01 : -0.02, est === 'topete' ? 0.4 : 0.41, 0, false);   // base cheia no alto
+    const n = est === 'topete' ? 11 : 34;
+    if (est === 'dreadAlto') GEO.twist = GEO.twist || geoTwist();
     for (let i = 0; i < n; i++) {   // raízes no alto da cabeça em espiral de ouro (espalhadas sem padrão)
       const yy = 1 - (i + 0.5) / n * 0.5, rr = Math.sqrt(1 - yy * yy), a = i * 2.39996, hx = Math.cos(a), hz = Math.sin(a);
       const x = -0.015 + hx * rr * 0.15, y = 0.225 + yy * 0.19, z = hz * rr * 0.135;
       if (est === 'topete') {   // topete bagunçado: mechas em cunha subindo, as da frente maiores e puxadas para a frente
         const fr = clamp((x + 0.06) / 0.2, 0, 1);
         fio(GEO.cone, cabelo, 0.065, x, y - 0.02, z, hx * 0.5 + 0.9 * fr, 1, hz * 0.6, 0.11 + 0.07 * fr);   // cunhas grossas (finas pareciam espinhos)
-      } else {   // twists: sobem um pouco do alto e caem para os lados e para trás; os da testa são mais curtos
-        const k = 1 + 0.2 * ((i * 7) % 3 - 1), curto = hx > 0.4 ? 0.65 : 1;   // k: comprimento varia de um twist para o outro
-        let p = fio(GEO.membro, cabelo, 0.022, x, y, z, hx * 0.6, 1, hz * 0.6, 0.05 * k);
-        p = fio(GEO.membro, cabelo, 0.02, p[0], p[1], p[2], hx, -0.35, hz, 0.075 * k * curto);
-        fio(GEO.membro, cabelo, 0.017, p[0], p[1], p[2], hx * 0.45, -1, hz * 0.45, 0.07 * k * curto);   // a ponta cai
+      } else {   // twists enrolados (GEO.twist, em gomos): sobem do alto e caem em arco para os lados e para trás; os da testa mais curtos,
+        // os de baixo caem mais (os cilindros de antes, em 3 pedaços de tampa reta, pareciam um esfregão)
+        const k = 1 + 0.2 * ((i * 7) % 3 - 1), curto = hx > 0.4 ? 0.7 : 1, L = 0.16 * k * curto;   // k: comprimento varia de um twist para o outro
+        const t = peca(cab, GEO.twist, cabelo, L, L, L, x - hx * 0.01, y - 0.01, z - hz * 0.01, false);
+        t.rotation.order = 'YZX'; t.rotation.set(0, Math.atan2(-hz, hx), -0.1 - 0.6 * (1 - yy));
       }
     }
   }
@@ -1596,7 +1628,10 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
       m.rotation.set(Math.sin(a) * 1.0, 0, 0.75 + Math.cos(a) * 0.35);
     }
   }
-  if (est === 'afro') peca(cab, GEO.esfera, cabelo, 0.27, 0.25, 0.28, -0.06, 0.31, 0);
+  if (est === 'afro' && d.naQ) {   // Quaternius: afro crespo em cachos (GEO.afroCrespo), sem contorno (o traço virava um aro preto)
+    GEO.afroCrespo = GEO.afroCrespo || geoAfroCrespo();
+    peca(cab, GEO.afroCrespo, cabelo, 0.285, 0.265, 0.3, -0.065, 0.315, 0, false);
+  } else if (est === 'afro') peca(cab, GEO.esfera, cabelo, 0.27, 0.25, 0.28, -0.06, 0.31, 0);
   if (est === 'coque') peca(cab, GEO.esfera, cabelo, 0.09, 0.09, 0.09, d.feminino ? -0.1 : -0.17, d.feminino ? 0.43 : 0.36, 0, !d.naQ);   // coque (alto, no corpo feminino); no RigQ sem contorno (virava um disco preto)
   if (est === 'coque' && d.elastico) peca(cab, GEO.toro, M(d.elastico), 0.065, 0.065, 0.08, d.feminino ? -0.1 : -0.17, d.feminino ? 0.37 : 0.3, 0, false).rotation.x = Math.PI / 2;   // elástico na base do coque
   if (est === 'coque' && d.agulhas) { const ag = M(d.agulhas);   // duas agulhas de tricô cruzadas em X atravessando o coque
@@ -1614,6 +1649,12 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
       let tx = -sf * 0.165, ty = cf * 0.19; const lt = Math.hypot(tx, ty); tx /= lt; ty /= lt;   // tangente no arco (para trás)
       const L = (0.085 + 0.03 * ((i * 5) % 3) / 2) * cr * (t < 0.1 ? 0.75 : 1);
       fio(GEO.cone, cabelo, 0.038 * Math.sqrt(cr), x - cf * 0.02, y - sf * 0.02, z, cf + tx * 0.8, sf + ty * 0.8, fil * 0.5, L); }
+    if (d.cristaCheia) for (let i = 0; i < 9; i++) {   // cristaCheia: crista cheia (a do ligeiro da foto) — base maciça em leque ao longo do arco
+      // (os tufos soltos pareciam uma coroa de espinhos) e uma 3ª fileira de pontas no meio, mais compridas, varrendo para trás
+      const t = i / 8, f = 0.45 + t * 1.8, cf = Math.cos(f), sf = Math.sin(f), x = -0.01 + cf * 0.165, y = 0.235 + sf * 0.19;
+      const b = peca(cab, GEO.esferaP, cabelo, 0.07, 0.05 * cr * (t < 0.15 ? 0.7 : 1), 0.032, x + cf * 0.02, y + sf * 0.02, 0, false); b.rotation.z = f - Math.PI / 2;
+      let tx = -sf * 0.165, ty = cf * 0.19; const lt = Math.hypot(tx, ty); tx /= lt; ty /= lt;
+      if (i % 2 === 0 || i === 7) fio(GEO.cone, cabelo, 0.042 * Math.sqrt(cr), x, y, 0, cf + tx * 1.1, sf + ty * 1.1, 0, (0.11 + 0.02 * (i % 3)) * cr * (t < 0.1 ? 0.8 : 1)); }
   } else if (est === 'moicano') {   // faixa no meio da cabeça com pontas espetadas para trás; crista > 1 = moicano alto e cheio
     const cr = d.crista || 1, n = cr > 1 ? 7 : 5;
     peca(cab, GEO.caixa, cabelo, 0.32, 0.11, 0.055 * Math.sqrt(cr), -0.03, 0.38, 0);
@@ -1627,12 +1668,23 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
     const a = (i / 7 - 0.5) * 2.6;
     const m = peca(cab, GEO.membro, cabelo, 0.032, 0.3, 0.032, -0.1 - Math.cos(a) * 0.06, 0.13, Math.sin(a) * 0.16, false); m.rotation.z = -0.3;
   }
-  if (est === 'bone' && d.naQ) {   // Quaternius: copa redonda justa na cabeça, botão no alto e aba comprida e curva para a frente
+  if (est === 'bone' && d.naQ && d.boneCurvo) {   // boneCurvo (RigQ): boné de aba curva (foto do capanga) — copa justa e alta,
+    // a borda da frente logo acima da sobrancelha e a de trás descendo na nuca; aba comprida em arco (cai para a ponta e para
+    // os lados), saindo da borda da copa (a copa antiga, larga e baixa, parecia capacete de hipismo). Sem contorno
+    const cb = M(d.corBone || '#c0392b'), ab = M(d.corBone || '#c0392b', null, { side: THREE.DoubleSide });
+    const c = peca(cab, GEO.calota, cb, 0.185, 0.2, 0.172, 0.03, 0.235, 0, false); c.rotation.z = 0.2;   // frente sobe, nuca desce
+    peca(cab, GEO.esferaP, cb, 0.018, 0.012, 0.018, -0.01, 0.43, 0, false);   // botão
+    const a = peca(cab, GEO.calota, ab, 0.165, 0.04, 0.16, 0.2, 0.242, 0, false); a.rotation.z = -0.05;   // aba: domo raso, a metade de trás dentro da copa
+  } else if (est === 'bone' && d.naQ) {   // Quaternius: copa redonda justa na cabeça, botão no alto e aba comprida e curva para a frente
     // (sem contorno: no RigQ o traço vira arco preto; a aba de caixa parecia uma tábua)
     const cb = M(d.corBone || '#c0392b');
     const c = peca(cab, GEO.calota, cb, 0.215, 0.205, 0.198, 0.0, 0.225, 0, false); c.rotation.z = -0.08;   // frente da copa baixa: cobre a testa
     peca(cab, GEO.esferaP, cb, 0.018, 0.012, 0.018, 0.0, 0.43, 0, false);   // botão
     const a = peca(cab, GEO.cilindro, cb, 0.17, 0.016, 0.165, 0.16, 0.265, 0, false); a.rotation.z = -0.1;   // aba: disco achatado, metade por dentro da copa
+    if (d.cachosSobBone) { GEO.afroCrespo = GEO.afroCrespo || geoAfroCrespo();   // cabelo crespo escapando embaixo do boné, dos lados e atrás (Beto)
+      const yb = 0.17 - (d.boneSobe || 0);   // cab aqui é o grupo do boné, que sobe 0,05 + boneSobe: os cachos ficam na altura da orelha
+      for (const s of [1, -1]) peca(cab, GEO.afroCrespo, cabelo, 0.052, 0.055, 0.035, -0.06, yb, s * 0.158, false);
+      peca(cab, GEO.afroCrespo, cabelo, 0.05, 0.055, 0.125, -0.16, yb, 0, false); }
   } else if (est === 'bone') { const cb = M(d.corBone || '#c0392b');
     peca(cab, GEO.calota, cb, 0.2, 0.19, 0.19, 0, 0.24, 0);
     peca(cab, GEO.caixa, cb, 0.18, 0.025, 0.21, 0.16, 0.3, 0); }
@@ -1654,14 +1706,16 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
   }
   if (est === 'franja' && d.naQ) {   // Quaternius: o rente é a malha da cabeça pintada (qRegiao); aqui o alto liso e cheio, a franja na
     // testa e uma volta de mechas lisas em cunha (grossas: finas viravam espinhos) cobrindo o alto da orelha e a nuca, mais compridas atrás
-    const al = peca(cab, GEO.esfera, cabelo, 0.175, 0.13, 0.168, -0.02, 0.36, 0, false); al.rotation.z = -0.12;   // alto da cabeça (a volta de mechas nasce na borda dele: largo e alto fazia aba de boina)
+    const al = peca(cab, GEO.esfera, cabelo, 0.18, 0.125, 0.172, -0.02, 0.345, 0, false); al.rotation.z = -0.12;   // alto da cabeça (a volta de mechas nasce na borda dele: largo e alto fazia aba de boina)
     for (let i = 0; i < 7; i++) { const zz = (i / 6 - 0.5) * 0.26;
-      fio(GEO.cone, cabelo, 0.05, 0.15 - zz * zz * 1.2, 0.41 - zz * zz * 1.5, zz, 0.4, -1, zz * 0.6, 0.14 - Math.abs(zz) * 0.12); }
-    for (let i = 0; i < 16; i++) { const a = 0.75 + i / 15 * (2 * Math.PI - 1.5), ca = Math.cos(a), sa = Math.sin(a);   // a: 0 = frente
-      const L = 0.13 + 0.07 * clamp(-ca, 0, 1) + 0.02 * ((i * 7) % 3) / 2;
-      fio(GEO.cone, cabelo, 0.055, -0.02 + ca * 0.16, 0.38, sa * 0.16, ca * 0.18, -1, sa * 0.18, L); }
+      fio(GEO.cone, cabelo, 0.05, 0.14 - zz * zz * 1.2, 0.395 - zz * zz * 1.5, zz, 0.45, -1, zz * 0.6, 0.13 - Math.abs(zz) * 0.1); }
+    // volta: as mechas nascem por dentro do alto e caem retas, rentes à cabeça (abrindo para fora viravam abajur/balde)
+    for (let i = 0; i < 18; i++) { const a = 0.7 + i / 17 * (2 * Math.PI - 1.4), ca = Math.cos(a), sa = Math.sin(a);   // a: 0 = frente
+      const orelha = Math.abs(sa) > 0.8 && ca > -0.5;   // em cima da orelha: curtas, a orelha aparece (como na foto)
+      const L = orelha ? 0.075 : 0.12 + 0.1 * clamp(-ca, 0, 1) + 0.025 * ((i * 7) % 3) / 2;   // raiz no equador do alto: o contorno sai redondo
+      fio(GEO.cone, cabelo, orelha ? 0.042 : 0.05, -0.025 + ca * 0.13, 0.35, sa * 0.13, ca * 0.03, -1, sa * 0.03, L); }
     for (let i = 0; i < 9; i++) { const a = i * 2.39996 + 0.4, ca = Math.cos(a), sa = Math.sin(a);   // mechas do alto deitadas sobre ele, para a frente e os lados (em pé viravam cartola)
-      fio(GEO.cone, cabelo, 0.05, -0.04 + ca * 0.05, 0.47, sa * 0.05, ca + 0.4, -0.35, sa, 0.11); }
+      fio(GEO.cone, cabelo, 0.05, -0.04 + ca * 0.05, 0.45, sa * 0.05, ca + 0.4, -0.35, sa, 0.1); }
   } else if (est === 'franja') {   // cabelo liso cortado reto com franja na testa
     calota(cabelo, 1.04, 0.12);
     for (let i = 0; i < 7; i++) {   // franja: mechas em cunha caindo na testa, acima das sobrancelhas
@@ -1673,6 +1727,9 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
     // trança na nuca, do lado da câmera (a trança que cai pelo ombro e pelo peito vem do tronco: RigQ.trancaNoPeito)
     for (let i = 0; i < 7; i++) { const t = i / 6, s = i % 2 ? 1 : -1;   // gomos da trança descendo da nuca para o lado esquerdo
       peca(cab, GEO.esferaP, cabelo, 0.045, 0.06, 0.042, -0.15 + t * 0.03, 0.27 - t * 0.2, -0.05 - t * 0.08 + s * 0.012, false).rotation.x = s * 0.55; }
+    if (d.mechasRosto) for (const s of [1, -1]) for (let i = 0; i < 4; i++) {   // (18/11) cabelo ondulado e cheio dos lados do rosto, saindo do quepe e cobrindo o alto da orelha (Rafaela)
+      const t = i / 3, onda = (i % 2 ? 1 : -1) * 0.012;
+      peca(cab, GEO.esferaP, cabelo, 0.05, 0.055, 0.035, 0.045 - t * 0.05, 0.36 - t * 0.065, s * (0.155 + t * 0.012 + onda), false).rotation.x = s * (0.25 + onda * 10); }
   } else if (est === 'tranca') {   // cabelo puxado e uma trança grossa caindo por cima do ombro
     calota(cabelo, 1.04, 0.15);
     for (let i = 0; i < 9; i++) { const t = i / 8;   // começa atrás da orelha e desce pela frente do ombro (lado da câmera)
@@ -1680,10 +1737,13 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
   }
   if (est === 'puffs' && d.naQ) {   // Quaternius: cabelo puxado pintado na cabeça e dois puffs crespos grandes no alto, um de cada lado:
     // miolo cheio e cachos (bolinhas em espiral de ouro) na volta, para o contorno sair crespo e não liso
-    for (const s of [1, -1]) { const cx = -0.05, cy = 0.45, cz = s * 0.2;
-      peca(cab, GEO.esfera, cabelo, 0.115, 0.105, 0.115, cx, cy, cz, false);
-      for (let i = 0; i < 40; i++) { const yy = 1 - (i + 0.5) / 40 * 1.6, rr = Math.sqrt(Math.max(0, 1 - yy * yy)), a = i * 2.39996;
-        peca(cab, GEO.esferaP, cabelo, 0.032, 0.032, 0.032, cx + Math.cos(a) * rr * 0.11, cy + yy * 0.1, cz + Math.sin(a) * rr * 0.11, false); } }
+    // (18/11) puffs maiores que meia cabeça, como na foto, e cachos meio enterrados no miolo (soltos pareciam cacho de uva)
+    for (const s of [1, -1]) { const cx = -0.06, cy = 0.47, cz = s * 0.225;
+      GEO.afroCrespo = GEO.afroCrespo || geoAfroCrespo();   // superfície em cachos (a mesma do afro), uma malha só
+      peca(cab, GEO.afroCrespo, cabelo, 0.155, 0.14, 0.155, cx, cy, cz, false);
+      for (let i = 0; i < 9; i++) { const yy = 0.75 - i / 8 * 1.3, rr = Math.sqrt(Math.max(0, 1 - yy * yy)), a = i * 2.39996 + (s > 0 ? 0 : 1), r = 0.05 + 0.012 * ((i * 5) % 3) / 2;   // calombos: contorno de nuvem, não de bola
+        GEO.crespoLeve = GEO.crespoLeve || geoCrespoLeve(); peca(cab, GEO.crespoLeve, cabelo, r, r, r, cx + Math.cos(a) * rr * 0.13, cy + yy * 0.12, cz + Math.sin(a) * rr * 0.13, false); }
+      for (let i = 0; i < 3; i++) peca(cab, GEO.esferaP, cabelo, 0.017, 0.02, 0.017, 0.105 - i * 0.012, 0.33 - i * 0.035, s * (0.145 + i * 0.006), false); }   // cachinhos soltos na têmpora
   } else if (est === 'puffs') {   // dois puffs de cabelo crespo no alto da cabeça
     calota(cabelo, 1.02, 0.1);
     for (const s of [1, -1]) peca(cab, GEO.esfera, cabelo, 0.13, 0.12, 0.13, -0.06, 0.43, s * 0.15);
@@ -1704,7 +1764,10 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
     // testa alta, aparecia pelo vão dos olhos e o traço do cabelo virava um arco escuro em volta do lenço
     if (d.lencoMalha) {   // Quaternius: pano amarrado — cabelo crespo saindo atrás e dos lados, nó com laço largo e as pontas soltas
       // cabelo crespo: um volume de cachos na nuca, por baixo da borda do pano (o rente dos lados é a malha da cabeça: qRegiao)
-      for (const [x, y, z, r] of LENCO_CACHOS) peca(cab, GEO.esferaP, cabelo, r, r * 0.92, r, x, y, z, false);
+      // (18/11) volume crespo de verdade (superfície em cachos, GEO.afroCrespo) atrás e dos lados, embaixo do pano (as bolinhas pareciam cacho de uva)
+      GEO.afroCrespo = GEO.afroCrespo || geoAfroCrespo();
+      peca(cab, GEO.afroCrespo, cabelo, 0.12, 0.115, 0.185, -0.105, 0.2, 0, false);
+      for (const s of [1, -1]) peca(cab, GEO.afroCrespo, cabelo, 0.075, 0.08, 0.06, -0.06, 0.23, s * 0.15, false);
       const xn = 0.1, yn = 0.445;
       peca(cab, GEO.esferaP, ln, 0.045, 0.042, 0.05, xn, yn, 0, false);   // nó, no alto da testa
       for (const s of [1, -1]) {
@@ -1725,7 +1788,19 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
     }
   }
   if (est === 'raspado') calota(cabelo, 0.99, 0.32);   // máquina zero: cabelo rente ao crânio
-  if (est === 'peruca') {   // peruca platinada gigante: volume em cachos atrás, dos lados e no alto, rosto livre
+  if (est === 'peruca' && d.naQ) {   // Quaternius (18/11): peruca platinada com volume alto e ondas compridas caindo atrás e pelos ombros
+    // (as bolas grandes do Rig pareciam capacete de gomos). Massa de trás e o alto armado; ondas = mechas em cadeia de gomos
+    // que balançam para os lados ao descer (S), mais finas na ponta; o rosto fica livre
+    calota(cabelo, 1.1, 0.05);
+    peca(cab, GEO.esfera, cabelo, 0.25, 0.3, 0.3, -0.15, 0.3, 0);          // volume de trás
+    peca(cab, GEO.esfera, cabelo, 0.22, 0.16, 0.25, -0.01, 0.45, 0);       // alto armado
+    for (let i = 0; i < 13; i++) { const a = 1.25 + i / 12 * (2 * Math.PI - 2.5), ca = Math.cos(a), sa = Math.sin(a);   // a: 0 = frente
+      const lado = Math.abs(sa) > 0.75, n = lado ? 6 : 5, R0 = 0.2;   // gomos grandes e compridos que se encostam: viram onda (pequenos pareciam cachos de peruca de juiz)
+      let x = -0.04 + ca * R0, y = 0.38, z = sa * (R0 + 0.02);
+      for (let k = 0; k < n; k++) { const t = k / (n - 1), r = 0.088 - t * 0.035, onda = (k % 2 ? 1 : -1) * 0.04;
+        x += ca * 0.014 - (lado ? 0.014 : 0.022); y -= 0.11; z += sa * 0.012 + onda * Math.abs(ca);
+        const g = peca(cab, GEO.esferaP, cabelo, r * 0.75, r * 1.6, r, x + ca * onda, y, z, false); g.rotation.x = -sa * 0.2 + (k % 2 ? 0.35 : -0.35); } }   // esferaP: 80 triângulos por gomo
+  } else if (est === 'peruca') {   // peruca platinada gigante: volume em cachos atrás, dos lados e no alto, rosto livre
     calota(cabelo, 1.08, 0.05);
     peca(cab, GEO.esfera, cabelo, 0.3, 0.33, 0.36, -0.16, 0.3, 0);          // volume de trás
     peca(cab, GEO.esfera, cabelo, 0.22, 0.15, 0.25, -0.02, 0.44, 0);        // topo
@@ -1735,11 +1810,12 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
     }
   }
   if (d.coroa) {   // coroa de strass: aro e pontas com pedras pink no alto da cabeça
-    const cr = M(d.coroa), pedra = M(d.corPedra || '#ff3dc8'), yc = est === 'peruca' ? 0.56 : 0.42;
+    const cr = M(d.coroa), pedra = M(d.corPedra || '#ff3dc8'), yc = est === 'peruca' ? 0.575 : 0.42;
     const aro = peca(cab, GEO.toro, cr, 0.15, 0.15, 0.13, 0.02, yc, 0, false); aro.rotation.x = Math.PI / 2;
-    for (let i = 0; i < 5; i++) { const a = (i / 4 - 0.5) * 1.9, x = 0.02 + Math.cos(a) * 0.15, z = Math.sin(a) * 0.13, h = i === 2 ? 0.11 : 0.075;
-      peca(cab, GEO.cone, cr, 0.022, h, 0.022, x, yc + h / 2, z, false);
-      peca(cab, GEO.esferaP, pedra, 0.017, 0.022, 0.017, x + 0.01, yc + 0.02, z, false); }
+    // (18/11) tiara de concurso: 7 pontas que sobem para o meio e pedras grandes em gota (a do meio maior), como na foto da Kika
+    for (let i = 0; i < 7; i++) { const a = (i / 6 - 0.5) * 1.9, x = 0.02 + Math.cos(a) * 0.15, z = Math.sin(a) * 0.13, m = 1 - Math.abs(i - 3) / 3, h = 0.07 + 0.1 * m;
+      peca(cab, GEO.cone, cr, 0.026, h, 0.016, x, yc + h / 2, z, false).rotation.x = -a * 0.5;
+      const k = 0.9 + 0.7 * m; peca(cab, GEO.esferaP, pedra, 0.016 * k, 0.026 * k, 0.018 * k, x + 0.012, yc + 0.03 + 0.02 * m, z, false); }
   }
   if (d.capita && d.naQ) {   // Quaternius: quepe de capitã — copa branca fofa mais larga que a faixa preta, aba preta curva com o
     // cordão dourado, âncora dourada na frente e (oculosChapeu) óculos escuros apoiados na faixa. Sem contorno (vira arco preto)
@@ -1791,7 +1867,10 @@ function pecasCabeca(cab, d, M, cabelo, preto, relevo) {
     const fx = M(d.faixaCabeca);
     // no afro a faixa dá a volta por fora do cabelo, na linha da testa (do tamanho do afro nessa altura: por dentro ela sumia)
     const afro = est === 'afro';
-    if (afro) peca(cab, GEO.cilindro, fx, 0.255, 0.055, 0.265, -0.06, 0.2, 0, false);
+    // naQ: em tronco de cone, por fora dos cachos (que alargam para cima); o cilindro reto deixava os cachos furarem a borda de cima
+    GEO.faixaAfro = GEO.faixaAfro || new THREE.CylinderGeometry(1, 0.95, 1, 24, 1, true);
+    if (afro && d.naQ) peca(cab, GEO.faixaAfro, fx, 0.283, 0.055, 0.3, -0.065, 0.2, 0, false);
+    else if (afro) peca(cab, GEO.cilindro, fx, 0.255, 0.055, 0.265, -0.06, 0.2, 0, false);
     else peca(cab, GEO.cilindro, fx, 0.19, 0.05, 0.18, 0, 0.27, 0, false);
     for (const s of [1, -1]) { const r = peca(cab, GEO.caixa, fx, 0.16, 0.035, 0.03, afro ? -0.32 : -0.24, afro ? 0.18 : 0.25, s * 0.03, false); r.rotation.z = 0.5 + s * 0.15; }
   }
@@ -1838,17 +1917,20 @@ function pecasPescoco(tronco, d, M, fT, preto) {
     const c = peca(tronco, GEO.toro, M(d.corCorrente || '#ffcc33'), 0.14, 0.14, 0.14, fc[0] - 0.045, 0.52, 0, false); c.rotation.set(0.6, Math.PI / 2, 0); }
   // colar de contas no pescoço (colar: uma cor; guias: várias voltas coloridas, como as guias de terreiro)
   // contas em "U" caindo do pescoço sobre o peito, sempre por fora da roupa (fT.frente com folga)
-  const colar = (cor, raio, y, contas) => { const mc = M(cor);
-    for (let i = 0; i < contas; i++) { const t = i / (contas - 1), zz = (t - 0.5) * 2 * raio, yy = y - (1 - Math.pow(2 * t - 1, 2)) * 0.11;
+  const colar = (cor, raio, y, contas, fundo = 0.11) => { const mc = M(cor);
+    for (let i = 0; i < contas; i++) { const t = i / (contas - 1), zz = (t - 0.5) * 2 * raio, yy = y - (1 - Math.pow(2 * t - 1, 2)) * fundo;
       const p = fT.frente(yy, zz, 0.018);
       peca(tronco, GEO.esferaP, mc, 0.02, 0.02, 0.02, p[0], p[1], p[2], false); } };
   if (d.colar && d.sementes) {   // colar de sementes: contas escuras, dentes claros (sementes) na frente e o pingente escuro no meio
     const mc = M(d.colar), ms = M(d.sementes);
-    for (let i = 0; i < 19; i++) { const t = i / 18, zz = (t - 0.5) * 0.22, yy = 0.6 - (1 - Math.pow(2 * t - 1, 2)) * 0.11, p = fT.frente(yy, zz, 0.018);
+    for (let i = 0; i < 19; i++) { const t = i / 18, zz = (t - 0.5) * 0.2, yy = 0.615 - (1 - Math.pow(2 * t - 1, 2)) * 0.075, p = fT.frente(yy, zz, 0.018);   // rente ao pescoço, caindo pouco (foto)
       if (i % 2 && Math.abs(t - 0.5) < 0.32) { const dn = peca(tronco, GEO.cone, ms, 0.02, 0.06, 0.02, p[0] + 0.006, p[1] - 0.018, p[2], false); dn.rotation.set(-zz * 3, 0, Math.PI); }
       else peca(tronco, GEO.esferaP, mc, 0.02, 0.02, 0.02, p[0], p[1], p[2], false); }
-    const pg = fT.frente(0.45, 0, 0.026); peca(tronco, GEO.esferaP, M('#3a2a22'), 0.016, 0.05, 0.036, pg[0], pg[1], 0, false);   // pingente
-  } else if (d.colar) colar(d.colar, 0.11, 0.6, 15);
+    const pg = fT.frente(0.5, 0, 0.026); peca(tronco, GEO.esferaP, M('#3a2a22'), 0.016, 0.045, 0.034, pg[0], pg[1], 0, false);   // pingente
+  } else if (d.colar) colar(d.colar, 0.095, 0.615, 15, d.pingente ? 0.06 : 0.11);   // pingente: colar rente ao pescoço
+  if (d.colar && d.pingente) { const pg = fT.frente(0.53, 0, 0.026), mp = M(d.pingente);   // pingente de pedra (gota) no meio do colar, com o engaste prata
+    peca(tronco, GEO.esferaP, M(d.colar), 0.012, 0.022, 0.022, pg[0], pg[1] + 0.03, 0, false);
+    peca(tronco, GEO.esferaP, mp, 0.014, 0.04, 0.026, pg[0] + 0.004, pg[1], 0, false); }
   if (d.logoPodcast) {   // logo do podcast na camiseta (Lalinha): estrela rosa clara atrás, microfone roxo-escuro no pé e estrelinhas amarelas
     // (y, z): posição relativa ao meio do logo, em escala K (pequeno, sumia no peito)
     const K = 1.7, lg = (y, z, cor, sx, sy, sz, rot = 0) => { const p = fT.frente(0.42 + (y - 0.4) * K, z * K, 0.028); const m = peca(tronco, GEO.esferaP, M(cor), sx, sy * K, sz * K, p[0], p[1], p[2], false); m.rotation.x = rot; return m; };
@@ -1858,10 +1940,20 @@ function pecasPescoco(tronco, d, M, fT, preto) {
     for (const [y, z, r] of [[0.48, -0.06, 0.016], [0.47, 0.065, 0.014], [0.36, 0.07, 0.012], [0.35, -0.07, 0.01]]) lg(y, z, '#f2c84a', 0.006, r, r);
   }
   if (d.guias && d.guiasLongas) {   // guias longas (Mãe Iara): 4 voltas de contas miúdas e compridas descendo até a barriga, cada uma com 2 cores alternadas
-    const cores = [['#c8322e', '#ece6d6'], ['#2e6fc8', '#ece6d6'], ['#7fb8e0', '#c8322e'], ['#ece6d6', '#2e6fc8']].map(p => p.map(c => M(c)));
-    cores.forEach((par, i) => { const raio = 0.085 + i * 0.012, fundo = 0.17 + i * 0.045, n = 18 + i * 2;   // contas compridas e poucas: cada uma pesa 80 triângulos
-      for (let k = 0; k < n; k++) { const t = k / (n - 1), zz = (t - 0.5) * 2 * raio, yy = 0.6 - i * 0.01 - (1 - Math.pow(2 * t - 1, 2)) * fundo, p = fT.frente(yy, zz, 0.025 + i * 0.004 + Math.max(0, 0.55 - yy) * 0.45);   // embaixo, por fora da bata solta
-        peca(tronco, GEO.esferaP, par[k % 2], 0.011, 0.018, 0.011, p[0], p[1], p[2], false); } });
+    // (18/11) 5 fios de contas encostadas umas nas outras, deitadas ao longo do fio (soltas e em pé pareciam confete):
+    // contas leves (GEO.conta, 24 triângulos), postas a distâncias iguais pelo comprimento do fio
+    GEO.conta = GEO.conta || new THREE.SphereGeometry(1, 6, 3);
+    const cores = [['#c8322e', '#ece6d6'], ['#2e6fc8', '#ece6d6'], ['#7fb8e0', '#c8322e'], ['#ece6d6', '#2e6fc8'], ['#e0703a', '#ece6d6']].map(p => p.map(c => M(c)));
+    const cima = new THREE.Vector3(0, 1, 0), tg = new THREE.Vector3();
+    cores.forEach((par, i) => { const raio = 0.062 + i * 0.009, fundo = 0.25 + i * 0.06, y0 = 0.605 - i * 0.006, n = 34 + i * 5, pts = [], acc = [0];   // compridas: a de fora chega à barriga
+      for (let k = 0; k <= 120; k++) { const t = k / 120, yy = y0 - (1 - Math.pow(2 * t - 1, 2)) * fundo;
+        pts.push(fT.frente(yy, (t - 0.5) * 2 * raio, 0.022 + i * 0.004 + Math.max(0, 0.55 - yy) * 0.45));   // embaixo, por fora da bata solta
+        if (k) acc.push(acc[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1], pts[k][2] - pts[k - 1][2])); }
+      const L = acc[120], meio = L / n * 0.55;
+      for (let j = 0, k = 0; j < n; j++) { const sj = (j + 0.5) / n * L; while (k < 119 && acc[k + 1] < sj) k++;
+        const a = pts[k], b = pts[k + 1], u = (sj - acc[k]) / Math.max(1e-6, acc[k + 1] - acc[k]);
+        const c = peca(tronco, GEO.conta, par[(j % 3) === 2 ? 1 : 0], 0.0085, meio, 0.0085, a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u, false);
+        c.quaternion.setFromUnitVectors(cima, tg.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]).normalize()); } });
   } else if (d.guias) ['#e8333a', '#2e86de', '#f4f1e8', '#ffd21f'].forEach((c, i) => colar(c, 0.1 + i * 0.015, 0.6 - i * 0.025, 15 + i * 2));
   if (d.apito) { const fa = fT.frente(0.42, 0, 0.01);   // apito pendurado num cordão
     peca(tronco, GEO.cilindro, M('#c8ccd2'), 0.015, 0.045, 0.015, fa[0], fa[1], 0.02, true).rotation.x = Math.PI / 2;
@@ -1893,12 +1985,12 @@ function objetoNaMao(e, d, M, preto, escuro) {
         const f = peca(b, GEO.esferaP, fo[i % 2], 0.008, 0.05, 0.02, 0.03 + Math.cos(a) * r * 0.6, -0.12 - t * 0.2, Math.sin(a) * r, false); f.rotation.x = Math.sin(a) * 0.7; f.rotation.z = Math.cos(a) * 0.4; }
     } else if (d.segura === 'selfie') {
       // pau de selfie seguindo o antebraço para além da mão (pose 'selfie': braço erguido), com a garra e o celular de frente para ela
-      peca(b, GEO.cilindro, preto, 0.017, 0.5, 0.017, 0.0, -0.27, 0, false);
-      peca(b, GEO.caixa, preto, 0.03, 0.03, 0.1, 0.0, -0.53, 0, false);   // garra
+      peca(b, GEO.cilindro, preto, 0.017, 0.36, 0.017, 0.0, -0.2, 0, false);   // (18/11) mais curto: o comprido saía da tela
+      peca(b, GEO.caixa, preto, 0.03, 0.03, 0.1, 0.0, -0.39, 0, false);   // garra
       // celular em pé na ponta do pau, paralelo à haste (comprido ao longo de y), com a tela (face larga, normal em +x) virada
       // para a mão que segura; a garra o prende pelas laterais
-      peca(b, GEO.caixa, M(d.corCelular || '#c77dff'), 0.016, 0.16, 0.085, -0.012, -0.6, 0, false);
-      peca(b, GEO.caixa, M('#15161c'), 0.004, 0.14, 0.072, -0.021, -0.6, 0, false);   // tela (lado −x, o de quem segura)
+      peca(b, GEO.caixa, M(d.corCelular || '#c77dff'), 0.016, 0.16, 0.085, -0.012, -0.46, 0, false);
+      peca(b, GEO.caixa, M('#15161c'), 0.004, 0.14, 0.072, -0.021, -0.46, 0, false);   // tela (lado −x, o de quem segura)
     } else if (d.segura === 'travessa') {   // travessa de coxinhas, deitada sobre a palma (antebraço na horizontal: pose 'travessa')
       const tv = new THREE.Group(); tv.rotation.z = -1.6; b.add(tv);   // desfaz o giro do braço: a travessa fica reta no chão
       const met = M('#9aa0a8'), cx = M('#d98a2b');
@@ -1908,18 +2000,27 @@ function objetoNaMao(e, d, M, preto, escuro) {
         peca(tv, GEO.esferaP, cx, 0.04, 0.035, 0.04, x, 0.075, z, false);
         peca(tv, GEO.cone, cx, 0.038, 0.08, 0.038, x, 0.12, z, false); }
     } else if (d.segura === 'biblia') {   // Bíblia infantil: capa escura com o desenho colorido (sol e cruz) virado para a câmera
-      peca(b, GEO.caixa, M('#2a1f3a'), 0.06, 0.22, 0.16, 0.02, -0.02, 0);
-      peca(b, GEO.caixa, M('#4fb3e8'), 0.064, 0.18, 0.13, 0.02, -0.01, 0, false);
-      peca(b, GEO.caixa, M('#3fa34d'), 0.066, 0.05, 0.13, 0.02, -0.075, 0, false);
-      const ouro = M('#ffcf3a'); peca(b, GEO.esferaP, ouro, 0.035, 0.035, 0.035, 0.02, 0.03, 0, false);
-      peca(b, GEO.caixa, M('#7a4a22'), 0.07, 0.1, 0.014, 0.02, 0.0, 0, false); peca(b, GEO.caixa, M('#7a4a22'), 0.07, 0.014, 0.06, 0.02, 0.02, 0, false);
+      // bibliaPeito (18/11): abraçada no peito, em pé e de capa para a frente (pose 'pregando' com o antebraço cruzado no peito)
+      const bb = d.bibliaPeito ? new THREE.Group() : b;
+      if (d.bibliaPeito) { b.add(bb); bb.position.set(0.0, -0.03, 0.0); bb.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0))); bb.rotateY(0.7); }   // rotateY: capa virada para a frente do corpo
+      peca(bb, GEO.caixa, M('#2a1f3a'), 0.06, 0.22, 0.16, 0.02, -0.02, 0);
+      peca(bb, GEO.caixa, M('#4fb3e8'), 0.064, 0.18, 0.13, 0.02, -0.01, 0, false);
+      peca(bb, GEO.caixa, M('#3fa34d'), 0.066, 0.05, 0.13, 0.02, -0.075, 0, false);
+      const ouro = M('#ffcf3a'); peca(bb, GEO.esferaP, ouro, 0.035, 0.035, 0.035, 0.02, 0.03, 0, false);
+      peca(bb, GEO.caixa, M('#7a4a22'), 0.07, 0.1, 0.014, 0.02, 0.0, 0, false); peca(bb, GEO.caixa, M('#7a4a22'), 0.07, 0.014, 0.06, 0.02, 0.02, 0, false);
     } else if (d.segura === 'leque') {   // leque aberto em meia-lua, de frente para a câmera (braço erguido: pose 'leque')
       const lq = new THREE.Group(); lq.rotation.z = -2.2; b.add(lq);   // desfaz o giro do braço
-      const pano = M(d.corLeque || '#ff3dc8'), vareta = M(escuro(d.corLeque || '#ff3dc8', 0.45));
-      for (let i = 0; i < 9; i++) { const a = (i / 8 - 0.5) * 2.4;   // gomos do leque em leque (plano lateral, de frente para +x)
+      const pano = M(d.corLeque || '#ff3dc8', null, { side: THREE.DoubleSide }), vareta = M(escuro(d.corLeque || '#ff3dc8', 0.45));
+      // (18/11) pano plissado inteiro: setor de anel no plano lateral (yz, de frente para +x) com as dobras em zigue-zague
+      // (os gomos soltos pareciam ripas separadas); as varetas aparecem embaixo do pano, até o eixo
+      GEO.leque = GEO.leque || (() => { const n = 18, a0 = -1.2, a1 = 1.2, pos = [], idx = [];
+        for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n, dx = i % 2 ? 0.04 : -0.04; for (const r of [0.34, 1]) pos.push(dx * r, Math.cos(a) * r, Math.sin(a) * r); }
+        for (let i = 0; i < n; i++) { const k = i * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g; })();
+      peca(lq, GEO.leque, pano, 0.27, 0.27, 0.27, 0.02, 0.02, 0, false);
+      for (let i = 0; i < 10; i++) { const a = (i / 9 - 0.5) * 2.4;
         const g = new THREE.Group(); g.rotation.x = a; g.position.set(0.02, 0.02, 0); lq.add(g);
-        peca(g, GEO.caixa, pano, 0.006, 0.17, 0.065, 0, 0.17, 0, i % 2 === 0);
-        peca(g, GEO.caixa, vareta, 0.01, 0.26, 0.008, 0.003, 0.13, 0, false); }
+        peca(g, GEO.caixa, vareta, 0.01, 0.1, 0.008, 0.003, 0.05, 0, false); }
     }
   }
 }
@@ -2994,6 +3095,7 @@ function qRegiao(d, nome, t, y, nz, nx, ny, med, x = 0, dx = 0, dz = 0, ladoX = 
   }
   if (/^upperarm_/.test(nome)) return d.luvaLonga && t > 0.45 ? 'luva' : comManga && t <= mangaAte ? (listraManga ? 'listra' : manga) : 'pele';
   // de paletó, o punho da camisa aparece na ponta da manga
+  if (d.bandagem && !d.mangaLonga && /^lowerarm_/.test(nome) && t > 0.66) return 'luva';   // bandagem de luta: a faixa da mão sobe pelo pulso (voltas: RigQ.voltasBandagem)
   if (/^lowerarm_/.test(nome)) return d.mangaLonga ? (listraManga ? 'listra' : d.paleto && t > 0.86 ? 'camisa' : manga) : d.luvaLonga ? 'luva' : 'pele';
   if (/^(hand_|index|middle|ring|pinky|thumb)/.test(nome)) return d.luva || d.luvaLonga || (d.luvaF && /_r$/.test(nome)) ? 'luva' : 'pele';
   // dentro da saia (rígida, presa à pelve): perna escondida — sem calça nem pele (só a canela de baixo aparece)
@@ -3153,17 +3255,56 @@ function qBarrigao(geo, med, k) {
     for (let i = 0; i < 3; i++) N[v * 3 + i] = Math.round(nn[i] / ln * 127); }
   return { P, N };
 }
+// corpo mais forte (massaQ 0–1, só RigQ, 18/11/2026): engrossa braço (deltoide e bíceps), antebraço, pescoço, trapézio, coxa e
+// panturrilha e estufa o peito — o lutador pesado da foto do Hanz (a malha Quaternius é de atleta comum). Cada vértice se afasta do
+// eixo dos ossos que o movem, pela soma dos pesos da pele (sem degrau nas emendas); a roupa da casca sai do corpo já deformado.
+// Normal refeita pela forma nova. Só na montagem do corte (P0/N0: o corpo de entrada, que não é alterado)
+function qMassa(geo, med, k, P0, N0) {
+  const A = geo.attributes, J = A.skinIndex.array, W = A.skinWeight.array, I = geo.index.array, n = P0.length / 3, nomes = QUATERNIUS.ossos;
+  const P = Float32Array.from(P0), N = Int8Array.from(N0), desl = new Float32Array(n);
+  // osso → [osso do fim do eixo, quanto engrossa ao longo dele (t: 0 no começo, 1 no fim), quanto vale para o lado (x)]
+  const R = new Map(), por = (nome, fim, f, lx = 1) => R.set(qIdx(nome), [qIdx(fim), f, lx]);
+  for (const s of ['l', 'r']) {
+    por('upperarm_' + s, 'lowerarm_' + s, t => 0.32 + 0.2 * Math.sin(Math.PI * t));   // deltoide em cima, bíceps no meio
+    por('lowerarm_' + s, 'hand_' + s, t => 0.32 * (1 - 0.6 * t));
+    por('clavicle_' + s, 'upperarm_' + s, () => 0.22);   // trapézio e alto do ombro
+    por('thigh_' + s, 'calf_' + s, t => 0.2 * (1 - 0.4 * t));
+    por('calf_' + s, 'foot_' + s, t => 0.16 * Math.sin(Math.PI * Math.min(1, t * 1.3))); }
+  por('neck_01', 'Head', () => 0.3);
+  por('spine_03', 'neck_01', () => 0.14, 0.5); por('spine_02', 'spine_03', () => 0.1, 0.6); por('spine_01', 'spine_02', () => 0.06, 0.6);   // peito para a frente, tronco de barril
+  for (let v = 0; v < n; v++) { let dx = 0, dy = 0, dz = 0;
+    for (let c = 0; c < 4; c++) { const w = W[v * 4 + c], r = w > 0 && R.get(J[v * 4 + c]); if (!r) continue;
+      const a = med.pos[J[v * 4 + c]], b = med.pos[r[0]], sx = b.x - a.x, sy = b.y - a.y, sz = b.z - a.z, L2 = sx * sx + sy * sy + sz * sz;
+      const x = P0[v * 3] - a.x, y = P0[v * 3 + 1] - a.y, z = P0[v * 3 + 2] - a.z, t = clamp((x * sx + y * sy + z * sz) / L2, 0, 1), e = w * k * r[1](t);
+      dx += (x - sx * t) * e * r[2]; dy += (y - sy * t) * e; dz += (z - sz * t) * e; }
+    const dd = Math.hypot(dx, dy, dz); if (dd < 1e-5) continue;
+    desl[v] = dd; P[v * 3] += dx; P[v * 3 + 1] += dy; P[v * 3 + 2] += dz; }
+  // normal pela forma nova (como no qBarrigao: soma das faces em volta, por posição, misturada pelo quanto mexeu)
+  const can = new Uint32Array(n), porPos = new Map(), acc = new Float32Array(n * 3);
+  for (let v = 0; v < n; v++) { const s = Math.round(P0[v * 3] * 2000) + ',' + Math.round(P0[v * 3 + 1] * 2000) + ',' + Math.round(P0[v * 3 + 2] * 2000);
+    if (!porPos.has(s)) porPos.set(s, v); can[v] = porPos.get(s); }
+  for (let t = 0; t < I.length; t += 3) { const a = I[t], b = I[t + 1], c = I[t + 2]; if (!desl[a] && !desl[b] && !desl[c]) continue;
+    const ux = P[b * 3] - P[a * 3], uy = P[b * 3 + 1] - P[a * 3 + 1], uz = P[b * 3 + 2] - P[a * 3 + 2], wx = P[c * 3] - P[a * 3], wy = P[c * 3 + 1] - P[a * 3 + 1], wz = P[c * 3 + 2] - P[a * 3 + 2];
+    const fx = uy * wz - uz * wy, fy = uz * wx - ux * wz, fz = ux * wy - uy * wx;
+    for (const v of [a, b, c]) { const q = can[v] * 3; acc[q] += fx; acc[q + 1] += fy; acc[q + 2] += fz; } }
+  for (let v = 0; v < n; v++) { if (!desl[v]) continue; const q = can[v] * 3, o = [N0[v * 3] / 127, N0[v * 3 + 1] / 127, N0[v * 3 + 2] / 127];
+    let m = [acc[q], acc[q + 1], acc[q + 2]], l = Math.hypot(...m); if (l < 1e-9) continue; if (m[0] * o[0] + m[1] * o[1] + m[2] * o[2] < 0) l = -l;
+    const w = clamp(desl[v] / 0.006, 0, 1), nn = o.map((c, i) => c * (1 - w) + m[i] / l * w), ln = Math.hypot(...nn) || 1;
+    for (let i = 0; i < 3; i++) N[v * 3 + i] = Math.round(nn[i] / ln * 127); }
+  return { P, N };
+}
 // corte de roupa (o que cobre o quê, sem as cores): região de cada vértice, malha da roupa (um grupo por peça) e
 // o corpo sem a pele coberta. Guardado por corte — visuais de cores diferentes e mesmo corte reaproveitam.
 function qCorte(id, d) {
   const descalco = !d.sapato || d.sapato === d.pele;
   const chave = id + JSON.stringify([d.semCamisa, d.manga, d.mangaAte, d.mangaLonga, d.short, d.shortAte, !!d.meiao, !!d.luva, !!d.luvaLonga, !!d.luvaF,
-    !!d.paleto, !!d.colete, !!d.gravata, d.golaAlta, !!d.gola, !!d.avental, !!d.listraLado, !!d.listraManga, !!d.saia, descalco, !!d.macacao, d.meiaoDe, !!d.debrum, d.saiaAte, !!d.bota, d.botaDe, d.estilo === 'lenco' ? 1 : d.estilo === 'bandana' ? 2 : Q_PUXADO.has(d.estilo) ? 3 : d.estilo === 'moicano' ? 4 + (d.crista || 1) : 0, d.calcaLarga, d.debrumSo, !!d.sapatilha, Q_UV_ESTAMPA[d.estampaCalca] || 0, Q_UV_ESTAMPA[d.estampaCamisa] || 0, !!d.camisaSolta, !!d.regata, !!d.golaAberta, d.estilo === 'moicano' && !!d.laterais, !!d.camisetaDentro, d.barrigao || 0, d.estilo === 'turbante', d.roupaQ || 0, d.roupaQ && d.modeloCamisa, d.roupaQ && d.modeloCalca, d.roupaQ && d.modeloSapato, !!d.chinelo]);   // lenço (com volume), bandana (justa), coque (cabelo pintado)
+    !!d.paleto, !!d.colete, !!d.gravata, d.golaAlta, !!d.gola, !!d.avental, !!d.listraLado, !!d.listraManga, !!d.saia, descalco, !!d.macacao, d.meiaoDe, !!d.debrum, d.saiaAte, !!d.bota, d.botaDe, d.estilo === 'lenco' ? 1 : d.estilo === 'bandana' ? 2 : Q_PUXADO.has(d.estilo) ? 3 : d.estilo === 'moicano' ? 4 + (d.crista || 1) : 0, d.calcaLarga, d.debrumSo, !!d.sapatilha, Q_UV_ESTAMPA[d.estampaCalca] || 0, Q_UV_ESTAMPA[d.estampaCamisa] || 0, !!d.camisaSolta, !!d.regata, !!d.golaAberta, d.estilo === 'moicano' && !!d.laterais, !!d.camisetaDentro, d.barrigao || 0, d.estilo === 'turbante', d.roupaQ || 0, d.roupaQ && d.modeloCamisa, d.roupaQ && d.modeloCalca, d.roupaQ && d.modeloSapato, !!d.chinelo, d.massaQ || 0, !!d.bandagem]);   // lenço (com volume), bandana (justa), coque (cabelo pintado)
   QX.cortes = QX.cortes || new Map();
   if (QX.cortes.has(chave)) return QX.cortes.get(chave);
   const { geo } = QX.geo[id].find(x => x.m.papel === 'corpo'), med = QX.med[id];
   const A = geo.attributes, UV = A.uv.array, J = A.skinIndex.array, W = A.skinWeight.array, I = geo.index.array, dom = geo.userData.dominante;
-  const { P, N } = d.barrigao ? qBarrigao(geo, med, d.barrigao) : { P: A.position.array, N: A.normal.array };   // barrigão: corpo deformado (a roupa sai dele)
+  let { P, N } = d.barrigao ? qBarrigao(geo, med, d.barrigao) : { P: A.position.array, N: A.normal.array };   // barrigão: corpo deformado (a roupa sai dele)
+  if (d.massaQ) ({ P, N } = qMassa(geo, med, d.massaQ, P, N));   // corpo mais forte (Hanz): idem
   const nomes = QUATERNIUS.ossos, filhoDe = new Map(), nv = dom.length, reg = new Uint8Array(nv), tv = new Float32Array(nv);
   nomes.forEach((n, k) => { const p = QUATERNIUS.esqueletos[id].ossos[k].p; if (p >= 0 && !filhoDe.has(p)) filhoDe.set(p, k); });
   const fCalca = d.roupaQ && qFonte(id, d, 'calca');
@@ -3217,7 +3358,7 @@ function qCorte(id, d) {
     if (Q_REG[r] === 'cabelo' && d.estilo === 'moicano' && d.laterais) f += 0.008;   // a faixa do moicano por cima do degradê das laterais
     if (Q_REG[r] === 'lenco' && d.estilo === 'lenco') {   // (a bandana fica justa) pano com volume por cima do cabelo: mais cheio no alto e atrás (o cabelo fica preso embaixo)
       const { mn, mx } = med.cabeca, yo = med.olhos.frente.y, ty = clamp((P[v * 3 + 1] - yo) / (mx.y - yo), 0, 1), tb = clamp(((mn.z + mx.z) / 2 - P[v * 3 + 2]) / ((mx.z - mn.z) / 2), 0, 1);
-      f += 0.006 * ty + 0.012 * tb * ty; }
+      f += -0.006 + 0.016 * ty + 0.012 * tb * ty; }   // (18/11) borda rente à testa e aos lados (a 1,2 cm da pele ela fazia aba de boina); o volume fica no alto e atrás
     if (Q_REG[r] === 'lenco' && d.estilo === 'turbante') {   // turbante: pano em voltas, alto e cheio no alto e atrás (a borda grossa é a barra)
       const { mn, mx } = med.cabeca, yo = med.olhos.frente.y, ty = clamp((P[v * 3 + 1] - yo) / (mx.y - yo), 0, 1), tb = clamp(((mn.z + mx.z) / 2 - P[v * 3 + 2]) / ((mx.z - mn.z) / 2), 0, 1);
       f += 0.012 + 0.03 * ty + 0.035 * tb * ty; }
@@ -3383,8 +3524,8 @@ function qAmostraExtremos(g) {
   return Uint32Array.from(new Set([].concat(...ext.values())));
 }
 // pele: a foto da Quaternius tingida pela cor da pele (a cueca vira pele: sempre fica por baixo da roupa)
-function qTexturaPele(id, pele) {
-  const chave = id + pele; if (QX.texCorpo.has(chave)) return QX.texCorpo.get(chave);
+function qTexturaPele(id, pele, d) {
+  const rosto = qRostoChave(d), chave = id + pele + rosto; if (QX.texCorpo.has(chave)) return QX.texCorpo.get(chave);
   const S = 512, med = QX.med[id], { m } = QX.geo[id].find(x => x.m.papel === 'corpo');
   const out = document.createElement('canvas'); out.width = out.height = S;
   const g = out.getContext('2d', { willReadFrequently: true }); g.drawImage(QX.img[m.tex], 0, 0, S, S);
@@ -3399,9 +3540,71 @@ function qTexturaPele(id, pele) {
     else { bd[i] = Math.min(255, r0 * kr); bd[i + 1] = Math.min(255, g0 * kg); bd[i + 2] = Math.min(255, b0 * kb); }
   }
   g.putImageData(img, 0, 0);
+  if (rosto) qPintarRosto(g, id, d, pc);
   const tex = new THREE.CanvasTexture(out); tex.flipY = false; tex.anisotropy = typeof ANISO === 'number' ? ANISO : 1;
   if (QX.texCorpo.size > 40) QX.texCorpo.clear();
   QX.texCorpo.set(chave, tex); return tex;
+}
+// rosto pintado na textura da pele (o rosto da Quaternius é uma projeção de frente no canto da textura, em px de 512):
+// rugas (0–1: testa, bigode chinês, pés de galinha, olheira), bocaPintada ('riso' gargalhada aberta, 'sorriso' de dentes,
+// 'fechado' sorriso de boca fechada, 'torto' meio sorriso de um lado), olhosPintados ('fechados': arcos de riso),
+// sombra (cor da sombra dos olhos) e delineado (traço escuro com a pontinha). Pintado fica rente ao rosto: as peças
+// na frente da boca saíam como bico em cabeça maior (criança)
+const Q_ROSTO = { m: { cx: 94, oy: 89, odx: 25.5, ny: 117, by: 136, bl: 16, ty: 60 }, f: { cx: 92.5, oy: 90, odx: 25.5, ny: 115, by: 132.5, bl: 17, ty: 62 } };
+function qRostoChave(d) {
+  if (!d || !(d.rugas || d.bocaPintada || d.olhosPintados || d.sombra || d.delineado)) return '';
+  return '|' + [d.rugas || 0, d.bocaPintada || '', d.olhosPintados || '', d.sombra || '', d.delineado || '', d.banguela ? 1 : 0, d.bocaPintada && d.batom || ''].join(',');
+}
+function qPintarRosto(g, id, d, pc) {
+  const R = Q_ROSTO[id], cx = R.cx, esc = (k, a) => `rgba(${Math.round(pc.r * 255 * k)},${Math.round(pc.g * 255 * k)},${Math.round(pc.b * 255 * k)},${a})`;
+  const traco = (cor, w, pts) => { g.strokeStyle = cor; g.lineWidth = w; g.lineCap = 'round'; g.beginPath(); g.moveTo(pts[0], pts[1]);
+    for (let i = 2; i < pts.length; i += 4) g.quadraticCurveTo(pts[i], pts[i + 1], pts[i + 2], pts[i + 3]); g.stroke(); };
+  const espelho = f => { for (const s of [-1, 1]) f(s); };
+  g.save();
+  if (d.sombra) espelho(s => { g.fillStyle = d.sombra; g.globalAlpha = 0.75; g.beginPath();
+    g.ellipse(cx + s * R.odx, R.oy - 6, 12, 7, s * 0.15, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1; });
+  if (d.rugas) { const k = d.rugas, cor = esc(0.55, 0.35 + 0.45 * k), w = 1.1 + 0.4 * k;
+    for (let i = 0; i < (k > 0.6 ? 3 : 2); i++) { const y = R.ty + i * 6; traco(cor, w, [cx - 20 + i * 2, y + 1, cx, y - 2, cx + 20 - i * 2, y + 1]); }   // testa
+    espelho(s => {
+      traco(cor, w + 0.3, [cx + s * 10, R.ny + 1, cx + s * 18, R.ny + 9, cx + s * (R.bl + 1), R.by + 3]);   // bigode chinês: da asa do nariz ao canto da boca
+      const ox = cx + s * (R.odx + 11);   // pés de galinha no canto de fora do olho
+      for (const dy of [-4, 0, 4]) traco(cor, w * 0.85, [ox, R.oy + dy * 0.4, ox + s * 3, R.oy + dy * 0.8, ox + s * 6, R.oy + dy * 1.4]);
+      traco(esc(0.6, 0.25 + 0.35 * k), w, [cx + s * (R.odx - 8), R.oy + 8, cx + s * R.odx, R.oy + 12, cx + s * (R.odx + 8), R.oy + 8]);   // olheira
+      if (k > 0.7) traco(cor, w, [cx + s * (R.bl + 2), R.by + 3, cx + s * (R.bl + 3), R.by + 8, cx + s * (R.bl + 2), R.by + 13]); });   // canto da boca caído
+  }
+  if (d.olhosPintados === 'fechados') espelho(s => { const ox = cx + s * R.odx;   // pálpebra fechada: sem o anel escuro do olho (o arco vai no globo: qTexturaOlhoFechado)
+    g.fillStyle = esc(1, 1); g.beginPath(); g.ellipse(ox, R.oy, 13, 9, 0, 0, Math.PI * 2); g.fill(); });
+  if (d.delineado) espelho(s => { const ox = cx + s * R.odx;   // delineado: traço grosso na pálpebra de cima e a pontinha para fora
+    traco(d.delineado, 2.2, [ox - s * 9, R.oy - 2, ox, R.oy - 7, ox + s * 10, R.oy - 3]);
+    traco(d.delineado, 1.8, [ox + s * 9, R.oy - 3, ox + s * 13, R.oy - 6, ox + s * 16, R.oy - 9]); });
+  const b = d.bocaPintada;
+  if (b === 'riso' || b === 'sorriso') {   // boca aberta: escuro em "D", dentes de cima, língua (riso)
+    const L = b === 'riso' ? R.bl + 5 : R.bl, y0 = R.by - (b === 'riso' ? 5 : 3), fundo = b === 'riso' ? 21 : 9;
+    g.fillStyle = esc(1, 1); g.beginPath(); g.ellipse(cx, R.by + 1, L + 2, 6, 0, 0, Math.PI * 2); g.fill();   // apaga os lábios da textura
+    const forma = () => { g.beginPath(); g.moveTo(cx - L, y0); g.quadraticCurveTo(cx, y0 + 3, cx + L, y0); g.quadraticCurveTo(cx + L * 0.9, y0 + fundo, cx, y0 + fundo); g.quadraticCurveTo(cx - L * 0.9, y0 + fundo, cx - L, y0); g.closePath(); };
+    forma(); g.fillStyle = '#3a0d10'; g.fill();
+    g.save(); forma(); g.clip();
+    g.fillStyle = '#f4efe6'; g.fillRect(cx - L, y0 - 2, L * 2, 6.5);   // dentes de cima
+    if (d.banguela) { g.fillStyle = '#3a0d10'; g.fillRect(cx + 1, y0 + 1, 3.5, 4); }
+    if (b === 'riso') { g.fillStyle = '#c0505a'; g.beginPath(); g.ellipse(cx, y0 + fundo - 1, L * 0.6, 5, 0, 0, Math.PI * 2); g.fill(); }   // língua
+    g.restore();
+    forma(); g.strokeStyle = d.batom || esc(0.45, 1); g.lineWidth = d.batom ? 3 : 1.4; g.stroke();   // contorno dos lábios (batom: lábios grossos pintados)
+  } else if (b === 'fechado' || b === 'torto') {   // boca fechada sorrindo: linha em arco com os cantos subindo (torto: só um canto)
+    const L = R.bl + 1, sobeE = b === 'torto' ? 1 : 4, sobeD = 5;
+    traco(esc(0.42, 0.95), 1.8, [cx - L, R.by - sobeE, cx - L * 0.5, R.by + 1.5, cx, R.by + 1.5, cx + L * 0.5, R.by + 1.5, cx + L, R.by - sobeD]);
+    espelho(s => { if (b === 'torto' && s < 0) return; traco(esc(0.5, 0.7), 1.2, [cx + s * (L + 1), R.by - 6, cx + s * (L + 3), R.by - 3, cx + s * (L + 2), R.by]); });   // covinha no canto
+  }
+  if (b === 'sorrisao' || b === 'rangendo') qPintarBocaLarga(g, R, cx, b, esc, traco);   // bocas dos capangas e chefes (junto de qSobrancelhaBrava)
+  g.restore();
+}
+// globo do olho fechado (olhosPintados 'fechados'): pálpebra da cor da pele com o arco escuro do riso ("∩") no meio
+function qTexturaOlhoFechado(pele) {
+  const chave = 'olhoFechado' + pele; if (QX.texCorpo.has(chave)) return QX.texCorpo.get(chave);
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  g.fillStyle = '#' + new THREE.Color(pele).multiplyScalar(0.92).getHexString(); g.fillRect(0, 0, 128, 128);
+  g.strokeStyle = '#1a0d0a'; g.lineWidth = 9; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(38, 74); g.quadraticCurveTo(64, 46, 90, 74); g.stroke();   // só o miolo do globo (u, v 0,35–0,65) aparece na abertura do olho
+  const t = new THREE.CanvasTexture(c); t.flipY = false; QX.texCorpo.set(chave, t); return t;
 }
 // cor e estampa de cada peça
 function qCorPeca(d, peca) {
@@ -3529,7 +3732,7 @@ function qVestir(id, d, peca) {
   const fonte = qFonte(id, d, peca); if (!fonte) return null;
   const modelo = fonte.modelo;
   const chave = fonte.geo + JSON.stringify([d.semCamisa, d.manga, d.mangaAte, d.mangaLonga, d.short, d.shortAte, d.regata, d.macacao, d.golaAberta, d.camisetaDentro,
-    d.saia, d.saiaAte, d.luva, d.luvaLonga, d.bota, d.botaDe, d.meiao, d.meiaoDe, d.paleto, d.colete, d.golaAlta, d.avental, d.gravata, d.camisaSolta, d.listraLado, d.calca === d.pele, modelo, d.barrigao || 0]);
+    d.saia, d.saiaAte, d.luva, d.luvaLonga, d.bota, d.botaDe, d.meiao, d.meiaoDe, d.paleto, d.colete, d.golaAlta, d.avental, d.gravata, d.camisaSolta, d.listraLado, d.calca === d.pele, modelo, d.barrigao || 0, d.massaQ || 0]);
   QX.vestir = QX.vestir || new Map(); if (QX.vestir.has(chave)) return QX.vestir.get(chave);
   const base = QX.geo[fonte.geo], med = QX.med[id], nomes = QUATERNIUS.ossos;
   const liso = !fonte.modular && peca === 'camisa' && modelo !== 'tunica';   // camiseta do camponês lisa: sem o relevo do cinto e das presilhas (qAplainar)
@@ -3551,6 +3754,8 @@ function qVestir(id, d, peca) {
   }
   // pança (barrigao): a peça deforma igual ao corpo (qBarrigao só depende da posição), senão a barriga atravessava o pano
   if (d.barrigao) { const r = qBarrigao({ attributes: { position: { array: Pn }, normal: { array: N } }, index: { array: I }, userData: { dominante: dom } }, med, d.barrigao); Pn = r.P; Nn = r.N; }
+  // corpo mais forte (massaQ): a peça engrossa com o corpo (pesos dela = os da pele de baixo), senão o braço furava a manga
+  if (d.massaQ) { const r = qMassa(base, med, d.massaQ, Pn || P, Nn || N); Pn = r.P; Nn = r.N; }
   const idx = [], usado = new Uint8Array(nv), gruposB = base.userData.grupos || [[0, I.length, null, 1, '']], grupos = [];
   for (const [ini, cnt, cor, principal, nome] of gruposB) { const i0 = idx.length;   // um grupo por material (roupa moderna): cada um com a sua cor
     for (let t = ini; t < ini + cnt; t += 3) if (!fora[I[t]] && !fora[I[t + 1]] && !fora[I[t + 2]]) { idx.push(I[t], I[t + 1], I[t + 2]); usado[I[t]] = usado[I[t + 1]] = usado[I[t + 2]] = 1; }
@@ -3632,6 +3837,14 @@ function qEstampaPatch(sh) {
     vec4 tA = mapTexelToLinear( texture2D( map, vEstP.zy * ${Q_ESTAMPA_ESC} ) ), tB = mapTexelToLinear( texture2D( map, vEstP.xz * ${Q_ESTAMPA_ESC} ) ), tC = mapTexelToLinear( texture2D( map, vEstP.xy * ${Q_ESTAMPA_ESC} ) );
     diffuseColor *= tA * wq.x + tB * wq.y + tC * wq.z;`);
 }
+// sola de outra cor no calçado modelado de material único (o tênis de mulher é todo de uma cor e parecia pantufa): a faixa
+// de baixo (altura de repouso até Q_SOLA_ALT) sai na cor uSola
+const Q_SOLA_ALT = '0.04';
+function qSolaPatch(sh) {
+  toonPatch(sh); sh.uniforms.uSola = { value: this.userData.corSola };
+  sh.vertexShader = 'varying float vSolaY;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vSolaY = position.y;');
+  sh.fragmentShader = 'uniform vec3 uSola;\nvarying float vSolaY;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>\n  if ( vSolaY < ${Q_SOLA_ALT} ) diffuseColor.rgb = uSola;`);
+}
 // listras horizontais na roupa modelada: faixas pela altura do vértice no repouso (antes da pele), então acompanham o corpo
 function qListrasPatch(sh) {
   toonPatch(sh);
@@ -3669,6 +3882,76 @@ function qTexturaCabelo(k) {
   for (let i = 0; i < p.length; i += 4) { const l = Math.min(255, (p[i] * 0.3 + p[i + 1] * 0.59 + p[i + 2] * 0.11) * k2); p[i] = p[i + 1] = p[i + 2] = l; }
   g.putImageData(id, 0, 0);
   const t = new THREE.CanvasTexture(c); t.flipY = false; QX.texCabelo.set(k, t); return t;
+}
+// cara brava (bravo, só RigQ): a sobrancelha franze — a ponta de dentro desce até o canto de cima do olho e chega um pouco
+// para o meio, a de fora sobe de leve, e ela engrossa (o "V" das fotos dos capangas e chefes). Uma cópia por corpo, na montagem
+function qSobrancelhaBrava(id, geo) {
+  QX.sobrBrava = QX.sobrBrava || {}; if (QX.sobrBrava[id]) return QX.sobrBrava[id];
+  const g = geo.clone(), P = g.attributes.position.array, n = P.length / 3, NB = 10;
+  let x0 = 1, x1 = 0; for (let v = 0; v < n; v++) { const ax = Math.abs(P[v * 3]); x0 = Math.min(x0, ax); x1 = Math.max(x1, ax); }
+  const faixa = ax => Math.min(NB - 1, Math.floor((ax - x0) / (x1 - x0 + 1e-6) * NB)), lo = new Float32Array(NB).fill(9), hi = new Float32Array(NB).fill(-9);
+  for (let v = 0; v < n; v++) { const b = faixa(Math.abs(P[v * 3])), y = P[v * 3 + 1]; lo[b] = Math.min(lo[b], y); hi[b] = Math.max(hi[b], y); }
+  let alt = 0, nb = 0; for (let b = 0; b < NB; b++) if (hi[b] > lo[b]) { alt += hi[b] - lo[b]; nb++; } alt /= Math.max(1, nb);   // altura média da sobrancelha
+  // mulher: sobrancelha de vilã — mais fina, a ponta de dentro desce pouco e a de fora sobe (arco alto da Agulha), sem o "V" grosso
+  const f = id === 'f', k = f ? 0.6 : 1, grossa = f ? 0.55 : 1.3, sobe = f ? 0.9 : 0.25, desce = f ? 0.7 : 1.1;
+  for (let v = 0; v < n; v++) { const x = P[v * 3], ax = Math.abs(x), b = faixa(ax), ym = (lo[b] + hi[b]) / 2, t = clamp((x1 - ax) / (x1 - x0), 0, 1);
+    P[v * 3 + 1] = ym + (P[v * 3 + 1] - ym) * grossa + alt * (sobe * (1 - t) - desce * t * t);   // t: 1 na ponta de dentro, 0 na de fora
+    P[v * 3] = Math.sign(x) * (ax - alt * 0.15 * k * t); P[v * 3 + 2] += alt * 0.2 * k * t; }
+  g.computeBoundingSphere(); QX.sobrBrava[id] = g; return g;
+}
+// bocaPintada 'sorrisao' (sorriso largo de deboche, de bochecha a bochecha: dentes de cima e de baixo, cantos subindo e o
+// vinco na bochecha — ligeiro, coqueiro, Muralha) e 'rangendo' (dentes cerrados de raiva, cantos puxados para baixo — capanga).
+// Chamada no fim de qPintarRosto (mesma textura da pele, px de 512)
+function qPintarBocaLarga(g, R, cx, b, esc, traco) {
+  const ri = b === 'sorrisao', L = R.bl + (ri ? 5 : 4), y0 = R.by - 2, yc = y0 - (ri ? 5 : -4), fundo = ri ? 10 : 8;   // yc: altura dos cantos
+  g.fillStyle = esc(1, 1); g.beginPath(); g.ellipse(cx, R.by + 1, L + 2, 8, 0, 0, Math.PI * 2); g.fill();   // apaga os lábios da textura
+  // sorriso: "D" com os cantos para cima; rangido: arco em "∩" (o meio sobe, os cantos caem), com 3 px de boca nos cantos
+  const forma = ri ? () => { g.beginPath(); g.moveTo(cx - L, yc); g.quadraticCurveTo(cx, y0 + 1, cx + L, yc);
+    g.quadraticCurveTo(cx + L * 0.8, y0 + fundo, cx, y0 + fundo); g.quadraticCurveTo(cx - L * 0.8, y0 + fundo, cx - L, yc); g.closePath(); }
+    : () => { g.beginPath(); g.moveTo(cx - L, yc); g.quadraticCurveTo(cx, y0 - 5, cx + L, yc); g.lineTo(cx + L, yc + 3); g.quadraticCurveTo(cx, y0 + 6, cx - L, yc + 3); g.closePath(); };
+  forma(); g.fillStyle = '#f4efe6'; g.fill();   // dentes
+  g.save(); forma(); g.clip();
+  if (ri) { g.fillStyle = '#3a0d10'; g.beginPath(); g.moveTo(cx - L, yc + 1); g.quadraticCurveTo(cx, y0 + 11, cx + L, yc + 1); g.quadraticCurveTo(cx, y0 + 15, cx - L, yc + 1); g.fill(); }   // vão escuro entre os dentes
+  else traco('#4a3a36', 1.3, [cx - L, yc + 1.5, cx, y0 + 0.5, cx + L, yc + 1.5]);   // dentes cerrados: uma linha
+  for (let i = -3; i <= 3; i++) traco('rgba(90,74,68,0.55)', 0.8, [cx + i * L / 4, y0 - 5, cx + i * L / 4, y0 + 3, cx + i * L / 4, y0 + fundo]);   // separação dos dentes
+  g.restore();
+  forma(); g.strokeStyle = esc(0.38, 1); g.lineWidth = 1.8; g.stroke();   // lábios
+  for (const s of [-1, 1]) traco(esc(0.5, 0.8), 1.4, ri ? [cx + s * (L + 1), yc - 6, cx + s * (L + 4), yc, cx + s * (L + 2), yc + 6]   // vinco do sorriso
+    : [cx + s * (L + 1), yc, cx + s * (L + 2), yc + 4, cx + s * (L + 1), yc + 8]);   // canto puxado para baixo
+}
+// barba cheia (barbaCheia 0–1, só RigQ, com barba): uma 2ª camada da Hair_Beard estufada para os lados, para a frente do
+// queixo e comprida embaixo dele (a barba volumosa do Bigorna e do Ferreiro); a camada de baixo continua rente ao rosto
+function qBarbaCheia(k) {
+  QX.barbaCheia = QX.barbaCheia || {}; if (QX.barbaCheia[k]) return QX.barbaCheia[k];
+  const base = QX.geo.Hair_Beard, g = base.clone(), P = g.attributes.position.array, n = P.length / 3;
+  let y0 = 9; for (let v = 0; v < n; v++) y0 = Math.min(y0, P[v * 3 + 1]);   // ponta do queixo
+  const yBoca = y0 + 0.09, yLado = y0 + 0.14;   // abaixo da boca a barba cresce para a frente e para baixo; até o alto da costeleta, para os lados
+  for (let v = 0; v < n; v++) { const y = P[v * 3 + 1], ws = clamp((yLado - y) / 0.04, 0, 1), wf = clamp((yBoca - y) / 0.03, 0, 1), t = clamp((yBoca - y) / (yBoca - y0), 0, 1.2);
+    P[v * 3] *= 1 + 0.16 * k * ws; P[v * 3 + 2] += 0.018 * k * wf + 0.01 * k * t; P[v * 3 + 1] -= 0.038 * k * t * t; }
+  g.computeBoundingSphere(); QX.barbaCheia[k] = g; return g;
+}
+// topete alto (topeteAlto 0–1, só RigQ, 18/11/2026): cópia do cabelo da malha com o alto esticado para cima e para a frente,
+// mais na testa (o topete do Enzo); laterais e nuca ficam iguais. Uma cópia por cabelo e medida, na montagem
+function qCabeloAlto(nome, med, k) {
+  QX.cabeloAlto = QX.cabeloAlto || {}; const ch = nome + k; if (QX.cabeloAlto[ch]) return QX.cabeloAlto[ch];
+  const g = QX.geo[nome].clone(), P = g.attributes.position.array, n = P.length / 3, { mn, mx } = med.cabeca, yo = med.olhos.frente.y;
+  const zc = (mn.z + mx.z) / 2, hz = (mx.z - mn.z) / 2, y0 = yo + (mx.y - yo) * 0.5;
+  for (let v = 0; v < n; v++) { const y = P[v * 3 + 1]; if (y <= y0) continue;
+    const w = clamp((P[v * 3 + 2] - zc) / hz * 0.7 + 0.45, 0, 1), dy = y - y0;   // w: 1 na testa, 0 na nuca
+    P[v * 3 + 1] += dy * k * (0.25 + 1.1 * w); P[v * 3 + 2] += dy * k * 0.35 * w; }
+  g.deleteAttribute('normal'); g.computeVertexNormals(); g.computeBoundingSphere(); QX.cabeloAlto[ch] = g; return g;
+}
+// cor dos olhos (olhos, só RigQ, 18/11/2026): a íris castanha da textura da Quaternius (círculo de raio ~14,5 px em volta de
+// 63,5 × 64 na textura de 128) recolorida pela cor dada, mantendo o claro/escuro (a pupila continua preta). Uma textura por cor
+function qTexturaOlho(k, cor) {
+  QX.texOlho = QX.texOlho || new Map(); const ch = k + cor; if (QX.texOlho.has(ch)) return QX.texOlho.get(ch);
+  const img = QX.img[k], c = document.createElement('canvas'), W = c.width = img.naturalWidth, H = c.height = img.naturalHeight;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0); const id = g.getImageData(0, 0, W, H), p = id.data, alvo = new THREE.Color(cor);
+  const cx = W * 63.5 / 128, cy = H * 64 / 128, R = W * 14.5 / 128, rgb = [alvo.r, alvo.g, alvo.b];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const dd = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / R; if (dd > 1) continue;
+    const i = (y * W + x) * 4, l = (p[i] * 0.3 + p[i + 1] * 0.59 + p[i + 2] * 0.11) / 255, f = Math.min(1.6, l / 0.22), b = clamp((1 - dd) / 0.15, 0, 1);   // b: borda suave
+    for (let c2 = 0; c2 < 3; c2++) p[i + c2] += (Math.min(255, rgb[c2] * 255 * f) - p[i + c2]) * b; }
+  g.putImageData(id, 0, 0); const t = new THREE.CanvasTexture(c); t.flipY = false; QX.texOlho.set(ch, t); return t;
 }
 // saia (ou pano do avental) com esqueleto: anéis elípticos [y, raio para a frente, raio para o lado] de cima para baixo,
 // em metros do modelo a partir da pelve, entre os ângulos a0 e a1 (0 = frente), com n divisões; repU = quantas vezes a
@@ -3729,7 +4012,7 @@ class RigQ {
     for (const { m, geo } of QX.geo[id]) {
       if (m.papel === 'corpo') {   // corpo sem a pele coberta + roupa em geometria (um material por peça: camisa, calça, paletó...)
         const C = qCorte(id, d);
-        this.malhaCorpo = malha(C.corpo, M('#ffffff', qTexturaPele(id, d.pele), { skinning: true, gradientMap: GRAD_PELE }));
+        this.malhaCorpo = malha(C.corpo, M('#ffffff', qTexturaPele(id, d.pele, d), { skinning: true, gradientMap: GRAD_PELE }));
         if (C.roupa) this.malhaRoupa = malha(C.roupa, C.roupa.userData.pecas.map(p => { const [cor, est] = qCorPeca(d, p), t = texturasRoupa(cor || '#888888', est);
           if ((p === 'calca' && qUsaRoupaQ(d, 'calca')) || (p === 'camisa' && qUsaRoupaQ(d, 'camisa'))) return M(cor || '#888888', null, { skinning: true, side: THREE.DoubleSide });   // canela da calça comprida abaixo da modelada: pano liso (a trama destoava)
           return M(t.cor, t.map, { normalMap: t.normal, normalScale: new THREE.Vector2(0.6, 0.6), skinning: true, side: THREE.DoubleSide }); }));
@@ -3749,34 +4032,45 @@ class RigQ {
               t.map.wrapS = t.map.wrapT = THREE.RepeatWrapping; mt.onBeforeCompile = qEstampaPatch; }
             else mt = M(gr.principal ? cor : /Tie/i.test(gr.nome) && d.gravata ? d.gravata : peca === 'pes' && d.sola ? d.sola : gr.cor, null, { skinning: true, side: THREE.DoubleSide });   // calçado: o resto (sola, cadarço) na cor da sola
             if (listras && (gr.principal || !f.modular)) mt.onBeforeCompile = qListrasPatch;   // listras de verdade no pano (pela altura do repouso)
+            // calçado de material único: sola de outra cor (d.sola; o tênis sem sola dada sai de sola branca)
+            if (peca === 'pes' && g.userData.grupos.length === 1 && (d.sola || f.modelo === 'tenis')) { mt.userData.corSola = new THREE.Color(d.sola || '#f2f0ea'); mt.onBeforeCompile = qSolaPatch; }
             return mt; });
           malha(g, mats); this.pecasQ.push(peca); if (peca === 'pes') this.geoPes = g; if (peca === 'calca') this.geoCalca = g; }
-      } else if (m.papel === 'olhos') { if (!d.olhosFechados) malha(geo, M('#ffffff', new THREE.Texture(QX.img[m.tex]), { skinning: true })).material.map.needsUpdate = true; }   // olhosFechados: sem o globo (os olhos viram arcos, abaixo)
-      else malha(geo, M(d.sobrancelhaEscura ? '#141010' : d.cabelo || '#1a1410', qTexturaCabelo(m.tex), { skinning: true, alphaTest: 0.4, side: THREE.DoubleSide }));
+      } else if (m.papel === 'olhos') { if (d.olhosPintados === 'fechados') malha(geo, M('#ffffff', qTexturaOlhoFechado(d.pele), { skinning: true, gradientMap: GRAD_PELE }));   // pálpebra fechada com o arco do riso
+        else if (!d.olhosFechados) malha(geo, M('#ffffff', d.olhos ? qTexturaOlho(m.tex, d.olhos) : new THREE.Texture(QX.img[m.tex]), { skinning: true })).material.map.needsUpdate = true; }   // olhos: íris na cor dada   // olhosFechados: sem o globo (os olhos viram arcos, abaixo)
+      else malha(d.bravo && m.papel === 'sobrancelha' ? qSobrancelhaBrava(id, geo) : geo, M(d.sobrancelhaEscura ? '#141010' : d.cabelo || '#1a1410', qTexturaCabelo(m.tex), { skinning: true, alphaTest: 0.4, side: THREE.DoubleSide }));
     }
     for (const mm of this.mats) if (mm.map && mm.map.image instanceof HTMLImageElement) { mm.map.flipY = false; mm.map.needsUpdate = true; }
     const est = d.estilo || 'curto', qc = Q_CABELO[est];
     const nomeCabelo = qc && qc[id === 'f' ? 1 : 0];
-    if (nomeCabelo) malha(QX.geo[nomeCabelo], M(d.cabelo || '#1a1410', qTexturaCabelo(QUATERNIUS.cabelos[nomeCabelo].tex), { skinning: true, alphaTest: 0.4, side: THREE.DoubleSide }));
+    if (nomeCabelo) malha(d.topeteAlto ? qCabeloAlto(nomeCabelo, med, +d.topeteAlto) : QX.geo[nomeCabelo], M(d.cabelo || '#1a1410', qTexturaCabelo(QUATERNIUS.cabelos[nomeCabelo].tex), { skinning: true, alphaTest: 0.4, side: THREE.DoubleSide }));
     // laterais: os lados raspados do moicano com o cabelo nascendo (degradê da Quaternius, cor própria); a faixa do moicano fica por cima
     if (d.laterais && est === 'moicano') malha(QX.geo[id === 'f' ? 'Hair_BuzzedFemale' : 'Hair_Buzzed'], M(d.laterais, qTexturaCabelo(QUATERNIUS.cabelos[id === 'f' ? 'Hair_BuzzedFemale' : 'Hair_Buzzed'].tex), { skinning: true, alphaTest: 0.4, side: THREE.DoubleSide }));
     if (d.barba) malha(QX.geo.Hair_Beard, M(d.cabelo || '#1a1410', qTexturaCabelo(QUATERNIUS.cabelos.Hair_Beard.tex), { skinning: true, alphaTest: 0.4, side: THREE.DoubleSide }));
+    if (d.barba && d.barbaCheia) malha(qBarbaCheia(d.barbaCheia), M(d.cabelo || '#1a1410', qTexturaCabelo(QUATERNIUS.cabelos.Hair_Beard.tex), { skinning: true, alphaTest: 0.4, side: THREE.DoubleSide }));   // 2ª camada estufada
     // quadros presos aos ossos (as peças do Rig entram nestes espaços)
     this.cabeca = this.quadroCabeca();
     const cabelo = M(d.cabelo || '#1a1410', texEstampa('cabelo'), relevo('cabelo', undefined, 0.5));
     // boné e afro: a cabeça da Quaternius tem os olhos mais altos que a do Rig; sobem (e o afro recua) para não cobrir os olhos
-    const AJUSTE = { bone: [0, 0.05], afro: [-0.04, 0.07] }, aj = AJUSTE[est];
+    const AJUSTE = { bone: [0, 0.05 + (d.boneSobe || 0)], afro: [-0.04, 0.07] }, aj = AJUSTE[est];   // boneSobe: boné mais alto na cabeça (a aba acima das sobrancelhas, como na foto do Beto)
     const chapeu = aj ? new THREE.Group() : this.cabeca; if (aj) { chapeu.position.set(aj[0], aj[1], 0); this.cabeca.add(chapeu); }
     if (!qc || Q_ESTILO_RIG.has(est)) pecasCabeca(chapeu, { ...d, estilo: qc && !Q_ESTILO_RIG.has(est) ? 'nenhum' : est, lencoMalha: true, naQ: true }, M, cabelo, preto, relevo);   // lencoMalha: o pano do lenço é a malha da cabeça (qRegiao); naQ: penteados próprios do boneco Quaternius
     else if (d.capita || d.foneCabeca || d.coroa || d.faixaCabeca) pecasCabeca(this.cabeca, { ...d, estilo: 'nenhum' }, M, cabelo, preto, relevo);
     pecasOculos(this.cabeca, d, M, preto);
     // bigode cheio em dois tufos caindo para os cantos da boca, na frente do lábio (por dentro do rosto ele sumia)
-    if (d.bigode) for (const s of [1, -1]) peca(this.cabeca, GEO.esferaP, cabelo, 0.022, 0.02, 0.048, 0.19, 0.152, s * 0.034, false).rotation.x = s * 0.4;
+    // corBigode: bigode de outra cor que o cabelo (grisalho mais escuro que o cabelo branco, no governador)
+    const bg = d.corBigode ? M(d.corBigode, texEstampa('cabelo'), relevo('cabelo', undefined, 0.5)) : cabelo;
+    if (d.bigode) for (const s of [1, -1]) peca(this.cabeca, GEO.esferaP, bg, 0.022, 0.02, 0.048, 0.19, 0.152, s * 0.034, false).rotation.x = s * 0.4;
     if (d.bigode === 'grosso') for (const s of [1, -1]) {   // bigodão: tufo cheio por cima e a ponta descendo e virando para fora no canto da boca
-      peca(this.cabeca, GEO.esferaP, cabelo, 0.026, 0.026, 0.05, 0.195, 0.158, s * 0.03, false).rotation.x = s * 0.25;
-      peca(this.cabeca, GEO.esferaP, cabelo, 0.02, 0.034, 0.022, 0.18, 0.122, s * 0.078, false).rotation.x = -s * 0.5; }
+      peca(this.cabeca, GEO.esferaP, bg, 0.026, 0.026, 0.05, 0.195, 0.158, s * 0.03, false).rotation.x = s * 0.25;
+      peca(this.cabeca, GEO.esferaP, bg, 0.02, 0.034, 0.022, 0.18, 0.122, s * 0.078, false).rotation.x = -s * 0.5; }
+    if (d.bigode === 'grosso') peca(this.cabeca, GEO.esferaP, bg, 0.028, 0.026, 0.05, 0.2, 0.157, 0, false);   // (18/11) miolo: os tufos separados pareciam linguiças
+    if (d.bigode === 'cheio') {   // bigode cheio em "V" invertido: miolo largo cobrindo o lábio de cima e as pontas descendo até o canto da boca
+      peca(this.cabeca, GEO.esferaP, bg, 0.026, 0.024, 0.056, 0.196, 0.155, 0, false);
+      for (const s of [1, -1]) peca(this.cabeca, GEO.esferaP, bg, 0.022, 0.03, 0.026, 0.187, 0.138, s * 0.06, false).rotation.x = -s * 0.55; }
     // argolaGrande: argola larga pendurada abaixo do lóbulo (a da Mãe Iara)
-    if (d.brincos) { const br = M(d.brincos), a = d.argolaGrande ? 2 : 1; for (const s of [1, -1]) peca(this.cabeca, GEO.toro, br, 0.022 * a, 0.026 * a, 0.022 * a, -0.005, 0.15 - (a - 1) * 0.035, s * 0.165, false); }
+    GEO.toroGrosso = GEO.toroGrosso || new THREE.TorusGeometry(1, 0.3, 6, 16);   // argolaGrande: argola de tubo grosso (a da foto da Iara)
+    if (d.brincos) { const br = M(d.brincos), a = d.argolaGrande ? 2 : 1; for (const s of [1, -1]) peca(this.cabeca, d.argolaGrande ? GEO.toroGrosso : GEO.toro, br, 0.022 * a, 0.026 * a, 0.022 * a, -0.005, 0.15 - (a - 1) * 0.035, s * 0.165, false); }
     // boca que mexe quando fala (q.boca): só o "escuro" da boca, por cima do rosto pintado
     this.bocaCav = new THREE.Group(); this.bocaCav.position.set(0.194, 0.13, 0); this.cabeca.add(this.bocaCav);   // x 0,194: na frente do lábio (em 0,15 ficava dentro do rosto da malha e a boca não aparecia)
     peca(this.bocaCav, GEO.caixa, M('#2a0d0d'), 0.012, 0.024, 0.05, 0, -0.012, 0, false);
@@ -3784,18 +4078,26 @@ class RigQ {
     this.labioInf = this.bocaCav;
     if (d.sorriso) {   // sorriso fixo: linha da boca em arco para cima e os dentes de cima aparecendo (a malha tem a boca reta)
       GEO.sorriso = GEO.sorriso || (() => { const g = new THREE.TorusGeometry(1, 0.22, 4, 12, Math.PI * 0.7); g.rotateZ(Math.PI * 1.15); g.rotateY(Math.PI / 2); return g; })();
-      peca(this.cabeca, GEO.sorriso, M('#4a1a14'), 0.014, 0.024, 0.046, 0.198, 0.134, 0, false);
-      peca(this.cabeca, GEO.esferaP, M('#f4efe6'), 0.008, 0.01, 0.032, 0.194, 0.12, 0, false);
+      if (id === 'm') {   // (18/11/2026) rosto de homem: a boca recua rápido para os cantos (medido na malha: x 0,193 no meio, 0,18 a 3 cm,
+        // 0,17 a 5 cm). O arco e os dentes retos ficavam até 1,4 cm na frente da bochecha — a "lasca branca" e o traço escuro
+        // saindo da boca vistos de 3/4 e de lado. Arco curvado com o rosto e dentes rentes, 2–3 mm na frente do lábio
+        GEO.sorrisoCurvo = GEO.sorrisoCurvo || (() => { const g = GEO.sorriso.clone(), p = g.attributes.position;
+          for (let i = 0; i < p.count; i++) p.setX(i, p.getX(i) - 1.45 * p.getZ(i) * p.getZ(i)); g.computeVertexNormals(); return g; })();
+        peca(this.cabeca, GEO.sorrisoCurvo, M('#4a1a14'), 0.014, 0.024, 0.046, 0.196, 0.134, 0, false);
+        peca(this.cabeca, GEO.esferaP, M('#f4efe6'), 0.016, 0.009, 0.028, 0.18, 0.12, 0, false);
+        if (d.banguela) peca(this.cabeca, GEO.caixa, M('#3a0d10'), 0.006, 0.013, 0.008, 0.196, 0.119, 0.007, false);   // dente da frente lascado (Cleitinho)
+      } else { peca(this.cabeca, GEO.sorriso, M('#4a1a14'), 0.014, 0.024, 0.046, 0.198, 0.134, 0, false);
+        peca(this.cabeca, GEO.esferaP, M('#f4efe6'), 0.008, 0.01, 0.032, 0.194, 0.12, 0, false); }
     }
     if (d.riso) {   // gargalhada: boca aberta (escuro com a língua), os dentes de cima à mostra; banguela = falta um dente da frente
       peca(this.cabeca, GEO.esferaP, M('#3a0d10'), 0.012, 0.03, 0.068, 0.19, 0.118, 0, false);
       peca(this.cabeca, GEO.esferaP, M('#c0505a'), 0.008, 0.011, 0.04, 0.197, 0.1, 0, false);
       peca(this.cabeca, GEO.esferaP, M('#f4efe6'), 0.008, 0.01, 0.056, 0.2, 0.136, 0, false);
       if (d.banguela) peca(this.cabeca, GEO.caixa, M('#3a0d10'), 0.008, 0.015, 0.014, 0.207, 0.134, 0.013, false); }
-    if (d.olhosFechados) {   // olhos fechados de riso: arco escuro (como um "n") no lugar de cada olho
+    if (d.olhosFechados && !d.olhosPintados) {   // olhos fechados de riso: arco escuro (como um "n") no lugar de cada olho
       GEO.olhoFechado = GEO.olhoFechado || (() => { const g = new THREE.TorusGeometry(1, 0.24, 4, 10, Math.PI * 0.7); g.rotateZ(Math.PI * 0.15); g.rotateY(Math.PI / 2); return g; })();
       for (const s of [1, -1]) peca(this.cabeca, GEO.olhoFechado, M('#1a0d0a'), 0.012, 0.02, 0.032, 0.192, 0.226, s * 0.062, false); }
-    if (d.batom && !d.sorriso) {   // batom: os dois lábios pintados, por cima da boca da malha (a textura do rosto tem a boca cor de pele)
+    if (d.batom && !d.sorriso && !d.bocaPintada) {   // batom: os dois lábios pintados, por cima da boca da malha (a textura do rosto tem a boca cor de pele)
       const bt = M(d.batom); peca(this.cabeca, GEO.esferaP, bt, 0.008, 0.0065, 0.036, 0.193, 0.14, 0, false);
       peca(this.cabeca, GEO.esferaP, bt, 0.009, 0.008, 0.031, 0.19, 0.127, 0, false); }
     const TR = troncoDoBoneco(d, L, d.barriga || 1, d.musculo || 1), fT = TR.forma;
@@ -3822,6 +4124,14 @@ class RigQ {
       // relogio: relógio inteligente — caixa da cor da pulseira e a tela acesa (cor relogio) por fora do pulso (z: +direita do boneco)
       if (d.relogio) { const s = b === this.bracoF ? 1 : -1; peca(b.e, GEO.bloco, mp, 0.05, 0.045, 0.02, 0, -0.25, s * 0.05, false);
         peca(b.e, GEO.caixa, M(d.relogio), 0.036, 0.034, 0.01, 0, -0.25, s * 0.062, false); } } }
+    // correnteNaMao: corrente de moto enrolada no pulso direito (2 voltas de elos em espiral) e a ponta caindo do punho (a da
+    // foto da Corrente; o golpe 'correntada' é com ela). Presa ao antebraço (bracoF.e: +y para o cotovelo), elos como os do pescoço
+    if (d.correnteNaMao) { const mc = M(d.correnteNaMao); GEO.elo = GEO.elo || new THREE.TorusGeometry(1, 0.42, 4, 8);
+      const elo = (x, y, z, ry, rz, deitado) => { const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.set(0, ry, rz); this.bracoF.e.add(g);
+        peca(g, GEO.elo, mc, 0.017, 0.012, 0.012, 0, 0, 0, false).rotation.x = deitado ? Math.PI / 2 : 0; };
+      for (let i = 0; i < 18; i++) { const a = i / 9 * Math.PI * 2; elo(Math.cos(a) * 0.056, -0.17 - i * 0.0055, Math.sin(a) * 0.056, -(a + Math.PI / 2), 0, i % 2); }
+      for (let i = 0; i < 7; i++) elo(0, -0.36 - i * 0.026, 0.012 + i * 0.003, 0, Math.PI / 2, i % 2); }   // ponta solta saindo de dentro do punho
+    if (d.bandagem && d.luva) this.voltasBandagem(M(escuro(d.luva, 0.78)));   // voltas da faixa de luta no pulso (Dandara)
     if (d.luvaF) {   // manopla de ferro do Ferreiro: 3 placas sobrepostas do punho até perto do cotovelo (a de cima mais larga, como
       // um sino), com a beirada escura e uma volta de rebites em cada; a mão (região luva) é de ferro e maior. Sem contorno
       // (no RigQ o traço do Rig vira arco preto)
@@ -3996,6 +4306,21 @@ class RigQ {
   }
   // bolsos de bermuda cargo: o bolso com a tampa e o botão do lado de fora de cada coxa, presos à coxa (acompanham a perna).
   // A distância é medida na coxa do modelo (o meio dela) mais a folga da calça
+  // bandagem de luta (bandagem, com luva = a cor; 18/11/2026): a faixa da mão sobe pelo pulso (região 'luva' até 1/3 do antebraço,
+  // qRegiao) e aqui as voltas da faixa por cima, inclinadas para lados alternados, num tom mais escuro (a luva lisa parecia luva de
+  // borracha). Raio medido no antebraço do modelo
+  voltasBandagem(mat) {
+    const med = this.med, g = QX.geo[this.idCorpo].find(x => x.m.papel === 'corpo').geo, P = g.attributes.position.array, dom = g.userData.dominante;
+    GEO.voltaBandagem = GEO.voltaBandagem || new THREE.CylinderGeometry(1, 1, 1, 14, 1, true);
+    for (const [lado, b] of [['r', this.bracoF], ['l', this.bracoB]]) {
+      const k = this.iOsso('lowerarm_' + lado), A = med.pos[k], ab = med.pos[this.iOsso('hand_' + lado)].clone().sub(A), L2 = ab.lengthSq(), kA = b.e.scale.x;
+      [0.72, 0.83, 0.94].forEach((t0, i) => { let r = 0, nr = 0;   // raio médio da seção (pelo máximo, as voltas ficavam soltas como pulseiras)
+        for (let v = 0; v < dom.length; v++) { if (dom[v] !== k) continue; const x = P[v * 3] - A.x, y = P[v * 3 + 1] - A.y, z = P[v * 3 + 2] - A.z, t = (x * ab.x + y * ab.y + z * ab.z) / L2;
+          if (Math.abs(t - t0) < 0.06) { r += Math.hypot(x - ab.x * t, y - ab.y * t, z - ab.z * t); nr++; } }
+        r = r / Math.max(1, nr) + 0.007;
+        const p = peca(b.e, GEO.voltaBandagem, mat, r / kA, 0.012 / kA, r / kA, 0, -t0 * Math.sqrt(L2) / kA, 0, false);
+        p.rotation.set(i % 2 ? 0.18 : -0.18, 0, i % 2 ? -0.1 : 0.1); }); }
+  }
   bolsosCargo(mb, mt, d) {
     const med = this.med, g = QX.geo[this.idCorpo].find(x => x.m.papel === 'corpo').geo, P = g.attributes.position.array, dom = g.userData.dominante;
     for (const lado of ['l', 'r']) {
@@ -4047,6 +4372,20 @@ class RigQ {
       for (const [h, a, dx] of [[0.42, 0.12, 0.025], [0.32, -0.2, -0.03]]) {
         const p = peca(this.quadril, GEO.cone, fx, 0.048, h, 0.01, xn + dx, yf - h / 2 - 0.02, zn * 1.22 - 0.02, false); p.rotation.set(0.02, 0, a); pontas.push(p); }
       this.coxaL = this.quadroOsso('thigh_l'); this.root.updateMatrixWorld(true);
+      for (const p of pontas) this.coxaL.attach(p);
+    } else if (d.faixa && d.cordaCapoeira) {   // corda de capoeira (18/11/2026, Cleitinho): cordão roliço de duas voltas na cintura, nó na frente
+      // do quadril esquerdo e as duas pontas finas caindo até perto do joelho, cada uma com o nó e a borla. As pontas vão para a coxa
+      // esquerda (penduradas na pelve, atravessavam o chão na rasteira). A faixa larga de antes parecia cinto de pano
+      const fx = M(d.faixa), pontas = []; GEO.cordaAnel = GEO.cordaAnel || new THREE.TorusGeometry(1, 0.05, 6, 36);
+      for (const [dy, k] of [[0.012, 1], [-0.012, 1.02]]) peca(this.quadril, GEO.cordaAnel, fx, fx0 * k, fz0 * k, fx0, 0, yc + dy, 0, false).rotation.x = Math.PI / 2;
+      const a = 0.75, xn = Math.cos(a) * fx0 + 0.008, zn = -Math.sin(a) * fz0 - 0.004;
+      peca(this.quadril, GEO.esferaP, fx, 0.026, 0.026, 0.03, xn, yc, zn, false);   // nó
+      for (const [h, dz, inc] of [[0.36, 0.012, 0.06], [0.31, -0.012, -0.05]]) {
+        const p = peca(this.quadril, GEO.cilindro, fx, 0.009, h, 0.009, xn + 0.004, yc - 0.012 - h / 2, zn + dz, false); p.rotation.x = inc; pontas.push(p);
+        const yb = yc - 0.012 - h / 2 - Math.cos(inc) * h / 2, zb = zn + dz - Math.sin(inc) * h / 2;
+        pontas.push(peca(this.quadril, GEO.esferaP, fx, 0.014, 0.014, 0.014, xn + 0.004, yb, zb, false));   // nó da ponta
+        pontas.push(peca(this.quadril, GEO.cone, fx, 0.024, 0.07, 0.024, xn + 0.004, yb - 0.04, zb, false)); }   // borla (abre para baixo)
+      this.coxaL = this.coxaL || this.quadroOsso('thigh_l'); this.root.updateMatrixWorld(true);
       for (const p of pontas) this.coxaL.attach(p);
     } else if (d.faixa) { const fx = M(d.faixa); peca(this.quadril, GEO.cilindro, fx, fx0, 0.05, fz0, 0, yc, 0, false);
       peca(this.quadril, GEO.bloco, fx, 0.05, 0.05, 0.06, fx0, yc, fz0 * 0.45, false);
@@ -4334,7 +4673,7 @@ function prepararQuaternius() {
   for (const D of Object.values(DB.inimigos)) visuais.push(...D.visuais);
   for (const P of Object.values(DB.personagens)) if (P.visual) visuais.push(P.visual);
   for (const v of visuais) if (!v.quadrupede) {
-    const id = v.feminino ? 'f' : 'm', C = qCorte(id, v); qTexturaPele(id, v.pele);
+    const id = v.feminino ? 'f' : 'm', C = qCorte(id, v); qTexturaPele(id, v.pele, v);
     if (C.roupa) for (const p of C.roupa.userData.pecas) { const [cor, est] = qCorPeca(v, p); texturasRoupa(cor || '#888888', est); }
   }
 }
@@ -4933,15 +5272,15 @@ class Coco {
 //  falaF / falaB  amplitude do gesto desse braço quando o figurante fala numa cena (0 = não gesticula)
 //  abano          leque: o antebraço da frente abana (rad); varre: as ervas varrem de um lado ao outro (rad)
 //  sai*           ao falar, o braço da frente sai da pose e vai para estes valores (governador: tira a mão das costas)
-const POSE_SENTADO = { by: -0.5, pF: 1.5, pB: 1.45, jF: -1.45, jB: -1.5, aF: 0.35, eF: 2.2, abF: 0.08, aB: 0.25, eB: 1.2, abB: 0.3, inc: 0.05,
+const POSE_SENTADO = { by: -0.5, pF: 1.5, pB: 1.45, jF: -1.45, jB: -1.5, aF: 0.35, eF: 2.2, abF: 0.08, aB: 0.25, eB: 1.2, abB: 0.3, inc: 0.05, cab: -0.2,
   maoB: 1, falaB: 1 };   // rádio em pé na mão da frente, a outra mão aberta sobre a coxa; ao falar, gesticula com ela (Beto)
 // posturas em pé (personagens.js → pose): o corpo vem de poseParado (à vontade, pés na largura do quadril) e os braços daqui.
 // O objeto na mão (Rig → segura) foi montado contando com o giro do braço destas poses (aF + eF).
 const POSES_FIGURANTE = {
   travessa: { aF: 0.35, eF: 1.3, abF: 0.4, torcaoF: 0.4, aB: -0.3, eB: 1.7, abB: 0.85, torcaoB: -1.1, maoB: 1, falaF: 0.15 },   // travessa na palma, à frente do avental, e a outra mão na cintura
-  leque:    { aF: 0.2, eF: 1.75, abF: 1.35, aB: -0.3, eB: 1.7, abB: 0.85, torcaoB: -1.5, maoB: 1, abano: 0.22, falaF: 0.5 },   // leque abanando perto do rosto e mão na cintura
-  pregando: { aB: 2.5, eB: 0.25, abB: -0.3, aF: 0.05, eF: 0.15, maoB: 2, falaB: 1 },       // indicador para o céu, ao lado da cabeça; Bíblia na outra mão
-  benzendo: { aF: 0.05, eF: 1.7, abF: 1.15, aB: 0.35, eB: 0.35, abB: 1.05, maoB: 1, varre: 0.28, falaB: 0.8 },   // ervas erguidas varrendo e a outra mão aberta para o lado (Mãe Iara)
+  leque:    { aF: -0.05, eF: 1.75, abF: 1.6, aB: -0.3, eB: 1.7, abB: 0.85, torcaoB: -1.5, maoB: 1, abano: 0.22, falaF: 0.5 },   // leque abanando perto do rosto e mão na cintura
+  pregando: { aB: 2.5, eB: 0.25, abB: -0.3, aF: 0.35, eF: 1.75, abF: 0.05, torcaoF: 0.6, maoB: 2, falaB: 1 },       // indicador para o céu, ao lado da cabeça; Bíblia na outra mão
+  benzendo: { aF: 0.25, eF: 2.0, abF: 0.55, torcaoF: -1.3, aB: 0.35, eB: 0.35, abB: 1.05, maoB: 1, varre: 0.28, falaB: 0.8 },   // ervas erguidas varrendo e a outra mão aberta para o lado (Mãe Iara)
   remo:     { aF: -0.15, eF: 1.9, abF: 0.65, torcaoF: -1.4, maoB: 1, falaB: 1 },             // remo apoiado no ombro, a mão ao lado da cabeça (Kauê)
   apontando: { aF: 0.9, eF: 0.05, abF: 1.5, aB: -0.3, eB: 1.7, abB: 0.85, torcaoB: -1.5, maoF: 2, maoB: 1, falaF: 0.6 },   // aponta para a rua, na diagonal, e a outra mão na cintura (Rafaela)
   selfie:   { aF: 0.5, eF: 0.3, abF: 2.4, torcaoF: 1.5, aB: 0.35, eB: 1.3, abB: 0.4, maoB: 1, falaB: 1 },   // pau de selfie erguido e a outra mão aberta, gesticulando (Lalinha)
@@ -5850,27 +6189,29 @@ Object.assign(DB.herois, {
     desc: 'Kickboxing. Rápida, chutes altos. De Cachoeiro de Itapemirim.',
     vel: 5.0, hp: 90, forca: 0.9, pulo: 12.5, velGolpe: 1.25, ginga: false,
     combo: ['jab', 'jab2', 'gancho', 'martelo2'], combos: COMBOS_KICKBOXING, especial: 'giratorio', aereo: 'voadora',
-    // regata roxa de costas nadador (regata + debrum da mesma cor), short de luta vermelho, luvas/bandagens vermelhas, descalça.
+    // regata roxa de costas nadador (regata + debrum da mesma cor), short de luta vermelho, bandagens vermelhas subindo pelo pulso (bandagem: voltas da faixa),
+    // afro crespo em cachos com a faixa amarela na testa, cara séria (bravo), descalça.
     // Sem roupaQ: não há regata nem short de mulher modelados (o short do camponês saía com a barra rasgada)
-    visual: { pele: '#5e3a22', camisa: '#5e2a7a', regata: true, debrum: '#5e2a7a', calca: '#951820', short: true, shortAte: 0.35, calcaLarga: 0.6, sapato: '#5e3a22', luva: '#951820', estilo: 'afro', cabelo: '#120c08', faixaCabeca: '#ffd21f', feminino: true, larg: 0.9 }
+    visual: { pele: '#5e3a22', camisa: '#5e2a7a', regata: true, debrum: '#5e2a7a', calca: '#951820', short: true, shortAte: 0.35, calcaLarga: 0.6, sapato: '#5e3a22', luva: '#951820', bandagem: true, estilo: 'afro', cabelo: '#120c08', faixaCabeca: '#ffd21f', feminino: true, bravo: true, larg: 0.9 }
   },
   hanz: {
     nome: 'HANZ', curto: 'Hanz', emoji: '🤼', cor: '#1f6fd8',
     desc: 'Wrestling. Lento, mas devastador. De Domingos Martins.',
     vel: 3.6, hp: 125, forca: 1.35, pulo: 10, velGolpe: 0.85, ginga: false,
     combo: ['jab', 'jab2', 'antebraco', 'marretada'], combos: COMBOS_LUTA_LIVRE, especial: 'arremetida', aereo: 'voadora',
-    // macacão de luta azul (peça única, debrum branco no decote, na cava e na barra, listra branca do lado), meião até o joelho, bota de luta de cano alto, sorrindo
-    visual: { pele: '#c8805a', camisa: '#1a5ec4', macacao: true, debrum: '#f4f1e8', listraLado: '#f4f1e8', calca: '#1a5ec4', short: true, shortAte: 0.5, meiao: '#1a5ec4', meiaoDe: 0.12, sapato: '#1b1b1b', bota: true, estilo: 'curto', cabelo: '#b8893a', barba: true, olhos: '#3f7fc4', sorriso: true, musculo: 1.35, sola: '#1b1b1b', larg: 1.1, escala: 1.08 }
+    // macacão de luta azul (peça única, debrum branco no decote, na cava e na barra, listra branca do lado), meião até o joelho, bota de luta de cano alto, sorrindo;
+    // corpo de lutador pesado (massaQ: braço, antebraço, pescoço, trapézio, peito e coxa mais grossos), olhos azuis
+    visual: { pele: '#c8805a', camisa: '#1a5ec4', macacao: true, debrum: '#f4f1e8', listraLado: '#f4f1e8', calca: '#1a5ec4', short: true, shortAte: 0.5, meiao: '#1a5ec4', meiaoDe: 0.12, sapato: '#1b1b1b', bota: true, estilo: 'curto', cabelo: '#b8893a', barba: true, olhos: '#3f7fc4', sorriso: true, musculo: 1.35, massaQ: 0.85, sola: '#1b1b1b', larg: 1.1, escala: 1.08 }
   },
   cleitinho: {
     nome: 'CLEITINHO', curto: 'Cleitinho', emoji: '🤸🏾', cor: '#19b34a',
     desc: 'Capoeira. Malandro e equilibrado. De Cariacica.',
     vel: 4.4, hp: 100, forca: 1.0, pulo: 11.5, velGolpe: 1.0, ginga: true,
     combo: ['jab', 'jab2', 'gancho', 'chute'], combos: COMBOS_CAPOEIRA, especial: 'meialua', aereo: 'voadora',
-    // camiseta amarela, calça de abadá branca e larga, corda verde com as pontas e as borlas caindo, descalço,
-    // twists no alto com as laterais em degradê, pulseira vermelha só no pulso direito, sorriso malandro
+    // camiseta amarela, calça de abadá branca e larga, corda verde roliça de duas voltas com o nó no quadril e as pontas com borlas (cordaCapoeira), descalço,
+    // twists no alto com as laterais em degradê, pulseira vermelha só no pulso direito, sorriso malandro com o dente da frente lascado (banguela)
     // roupa modelada: camiseta e a calça social (perna larga e reta até o tornozelo = abadá)
-    visual: { roupaQ: true, modeloCamisa: 'camiseta', modeloCalca: 'social', pele: '#7a4a2a', camisa: '#d09a00', manga: true, mangaAte: 0.5, calca: '#f4f1e8', calcaLarga: 1, sapato: '#7a4a2a', faixa: '#12702f', pontasFaixa: true, estilo: 'dreadAlto', cabelo: '#1a1410', pulseira: '#e8333a', pulseiraSo: 'direito', sorriso: true, larg: 0.9 }
+    visual: { roupaQ: true, modeloCamisa: 'camiseta', modeloCalca: 'social', pele: '#7a4a2a', camisa: '#d09a00', manga: true, mangaAte: 0.5, calca: '#f4f1e8', calcaLarga: 1, sapato: '#7a4a2a', faixa: '#12702f', cordaCapoeira: true, estilo: 'dreadAlto', cabelo: '#1a1410', pulseira: '#e8333a', pulseiraSo: 'direito', sorriso: true, banguela: true, larg: 0.9 }
   },
   enzo: {
     nome: 'ENZO', curto: 'Enzo', emoji: '🛸', cor: '#18c1e8',
@@ -5878,9 +6219,10 @@ Object.assign(DB.herois, {
     vel: 4.6, hp: 92, forca: 0.9, pulo: 11.5, velGolpe: 1.1, ginga: false,
     combo: ['jab', 'jab2', 'gancho', 'chute'], combos: COMBOS_BASICO, especial: 'pulsoEletrico', aereo: 'voadora',
     // camiseta preta de manga comprida com a gola fina e a listra de fora da manga em ciano, calça azul-marinho reta,
-    // tênis branco, topete castanho bagunçado com as laterais curtas, óculos de aro preto, relógio inteligente no pulso esquerdo, sorrindo
+    // tênis branco, topete castanho alto penteado para cima (cabelo repartido da malha esticado: topeteAlto), óculos de aro preto e lente ciano,
+    // olhos azuis, relógio inteligente no pulso esquerdo, sorrindo
     // sem roupaQ: o moletom modelado tem gola alta e esconde a listra da manga; camiseta solta (camisaSolta) por cima da calça
-    visual: { roupaQ: 'pes', modeloSapato: 'tenis', sola: '#d8d8d8', pele: '#c47f52', camisa: '#22252b', camisaSolta: true, listraManga: '#18c1e8', debrum: '#18c1e8', debrumSo: 'gola', manga: true, mangaLonga: true, calca: '#1c2750', calcaLarga: 0.6, sapato: '#f4f1e8', estilo: 'topete', cabelo: '#5e3518', oculos: 'grau', larg: 0.9, corLente: '#7fe3f5', olhos: '#2a8fb0', pulseira: '#1b1b1b', pulseiraSo: 'esquerdo', relogio: '#2fe0ff', sorriso: true }
+    visual: { roupaQ: 'pes', modeloSapato: 'tenis', sola: '#d8d8d8', pele: '#c47f52', camisa: '#22252b', camisaSolta: true, listraManga: '#18c1e8', debrum: '#18c1e8', debrumSo: 'gola', manga: true, mangaLonga: true, calca: '#1c2750', calcaLarga: 0.6, sapato: '#f4f1e8', estilo: 'curto', topeteAlto: 0.6, cabelo: '#5e3518', oculos: 'grau', larg: 0.9, corLente: '#2aa8c8', olhos: '#2a8fb0', pulseira: '#1b1b1b', pulseiraSo: 'esquerdo', relogio: '#2fe0ff', sorriso: true }
   }
 });
 
@@ -5920,16 +6262,18 @@ Object.assign(DB.inimigos, {
     // Calçado modelado (modeloSapato), variando: tênis (a foto, o do moletom e o do moicano), coturno (regata, colete
     // punk), bota (obra, cabeludo), sapato (o malandro de regata listrada, o coroa de terno) e o chinelo do de dread
     // (chinelo modelado: a sandália com o pé aparecendo, roupaQ: 'pes' = só o calçado modelado)
-    visuais: [{ roupaQ: true, pele: '#94572f', camisa: '#b02a22', camisaSolta: true, calca: '#2c3e70', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'bone', corBone: '#1e1e1e', cabelo: '#141010', bravo: true, sapato: '#ece8dc', modeloSapato: 'tenis', manga: true, mangaAte: 0.5 },
-              { roupaQ: true, modeloCamisa: 'regata', pele: '#7a4a2a', camisa: '#2d2d2d', camisaSolta: true, calca: '#56606b', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'curto', bravo: true, sapato: '#1b1b1b', modeloSapato: 'coturno', manga: true, mangaAte: 0.5 },
-              { roupaQ: true, modeloCamisa: 'moletom', pele: '#c48a5e', camisa: '#d0681a', camisaSolta: true, calca: '#3b3b3b', calcaLarga: 0.9, estilo: 'bone', corBone: '#c42a2a', bravo: true, sapato: '#2e6fb8', sola: '#f4f1e8', modeloSapato: 'tenis', manga: true, mangaAte: 0.5 },
-              { roupaQ: true, modeloCamisa: 'colete', modeloCalca: 'rasgada', pele: '#5a3620', camisa: '#2b2b2b', camisaSolta: true, manga: true, mangaAte: 0.5, calcaLarga: 0.9, calca: '#1b2a4a', estampaCalca: 'jeans', estilo: 'careca', barba: true, cabelo: '#111', oculos: true, bravo: true, corrente: true, sapato: '#6b4226', modeloSapato: 'coturno' },
+    // Cabeça (18/11/2026): todos de sobrancelha franzida (bravo); o da foto de boné de aba curva (boneCurvo) e dentes cerrados
+    // (bocaPintada 'rangendo'); os outros variam cabelo e cara: meio sorriso, sorrisão, barba cheia, bigode, topete, raspado
+    visuais: [{ roupaQ: true, pele: '#94572f', camisa: '#b02a22', camisaSolta: true, calca: '#2c3e70', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'bone', boneCurvo: true, corBone: '#1e1e1e', cabelo: '#141010', bravo: true, bocaPintada: 'rangendo', sapato: '#ece8dc', modeloSapato: 'tenis', manga: true, mangaAte: 0.5 },
+              { roupaQ: true, modeloCamisa: 'regata', pele: '#7a4a2a', camisa: '#2d2d2d', camisaSolta: true, calca: '#56606b', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'curto', cabelo: '#141010', bravo: true, bocaPintada: 'torto', sapato: '#1b1b1b', modeloSapato: 'coturno', manga: true, mangaAte: 0.5 },
+              { roupaQ: true, modeloCamisa: 'moletom', pele: '#c48a5e', camisa: '#d0681a', camisaSolta: true, calca: '#3b3b3b', calcaLarga: 0.9, estilo: 'bone', boneCurvo: true, corBone: '#c42a2a', bravo: true, bocaPintada: 'sorrisao', sapato: '#2e6fb8', sola: '#f4f1e8', modeloSapato: 'tenis', manga: true, mangaAte: 0.5 },
+              { roupaQ: true, modeloCamisa: 'colete', modeloCalca: 'rasgada', pele: '#5a3620', camisa: '#2b2b2b', camisaSolta: true, manga: true, mangaAte: 0.5, calcaLarga: 0.9, calca: '#1b2a4a', estampaCalca: 'jeans', estilo: 'careca', barba: true, barbaCheia: 0.5, cabelo: '#111', oculos: true, bravo: true, corrente: true, sapato: '#6b4226', modeloSapato: 'coturno' },
               { roupaQ: true, pele: '#d4a882', camisa: '#2a6cb0', estampaCamisa: 'listras', camisaSolta: true, calca: '#444', calcaLarga: 0.9, estilo: 'moicano', cabelo: '#3a2414', bravo: true, sapato: '#e8333a', sola: '#f4f1e8', modeloSapato: 'tenis', manga: true, mangaAte: 0.5 },
-              { roupaQ: 'pes', modeloSapato: 'chinelo', sapato: '#1f4fd8', pele: '#8d5a3b', semCamisa: true, camisa: '#8d5a3b', calca: '#c0392b', short: true, estilo: 'dread', cabelo: '#1a1410', bravo: true },
+              { roupaQ: 'pes', modeloSapato: 'chinelo', sapato: '#1f4fd8', pele: '#8d5a3b', semCamisa: true, camisa: '#8d5a3b', calca: '#c0392b', short: true, estilo: 'dread', cabelo: '#1a1410', bravo: true, bocaPintada: 'rangendo' },
               // gente de todo tipo no bando: pardo, amarelo, de cabelo comprido e o coroa grisalho
               { roupaQ: true, modeloCamisa: 'obra', modeloCalca: 'obra', pele: '#b98a5e', camisa: '#4b5320', camisaSolta: true, calca: '#2c3e70', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'curto', cabelo: '#2a1a10', bigode: true, bravo: true, sapato: '#6b4226', modeloSapato: 'bota', manga: true },
-              { roupaQ: true, modeloCamisa: 'regata', modeloCalca: 'social', pele: '#d9b48a', camisa: '#1b1b1b', estampaCamisa: 'listras', camisaSolta: true, calca: '#3b3b3b', calcaLarga: 0.9, estilo: 'curto', cabelo: '#0d0d0d', bravo: true, sapato: '#f4f1e8', modeloSapato: 'sapato', manga: true, mangaAte: 0.5 },
-              { roupaQ: true, modeloCamisa: 'colete', pele: '#a8693e', camisa: '#7f1d1d', camisaSolta: true, calca: '#1b2a4a', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'longo', cabelo: '#0d0d0d', bravo: true, sapato: '#222', modeloSapato: 'bota', manga: true, mangaAte: 0.5 },
+              { roupaQ: true, modeloCamisa: 'regata', modeloCalca: 'social', pele: '#d9b48a', camisa: '#1b1b1b', estampaCamisa: 'listras', camisaSolta: true, calca: '#3b3b3b', calcaLarga: 0.9, estilo: 'topete', cabelo: '#0d0d0d', bravo: true, bocaPintada: 'sorrisao', sapato: '#f4f1e8', modeloSapato: 'sapato', manga: true, mangaAte: 0.5 },
+              { roupaQ: true, modeloCamisa: 'colete', pele: '#a8693e', camisa: '#7f1d1d', camisaSolta: true, calca: '#1b2a4a', estampaCalca: 'jeans', calcaLarga: 0.9, estilo: 'raspado', cabelo: '#0d0d0d', barba: true, barbaCheia: 0.4, bravo: true, sapato: '#222', modeloSapato: 'bota', manga: true, mangaAte: 0.5 },
               { roupaQ: true, modeloCamisa: 'social', modeloCalca: 'social', pele: '#c99a72', camisa: '#56606b', camisaSolta: true, manga: true, mangaAte: 0.5, calca: '#3b3b3b', calcaLarga: 0.9, estilo: 'careca', cabelo: '#d8d8d8', bigode: true, barriga: 1.2, bravo: true, sapato: '#3b2412', modeloSapato: 'sapato' }]
   },
   ligeiro: {
@@ -5939,11 +6283,12 @@ Object.assign(DB.inimigos, {
     // de cava funda, bermuda amarela larga e descalço. Roupa modelada (roupaQ), um modelo por variação: regata (a foto),
     // colete aberto por cima da camiseta branca (bandana), moletom (boné) e camiseta (o playboy); bermuda em todos.
     // Pés: descalço (a foto), chinelo de tira rosa (bandana), tênis branco (boné) e mocassim caramelo modelado (playboy)
-    visuais: [{ roupaQ: true, modeloCamisa: 'regata', calcaLisa: true, pele: '#8f5530', camisa: '#0f7a6a', calca: '#c88a0a', short: true, shortAte: 0.85, estilo: 'moicano', crista: 1.7, laterais: '#3a2416', sobrancelhaEscura: true, cabelo: '#e0b012', brincos: '#c8ccd2', sorriso: true, bravo: true, larg: 0.85 },
+    // Cabeça (18/11/2026): crista cheia (cristaCheia) e sorrisão pintado; o de boné, boné de aba curva; o playboy, meio sorriso
+    visuais: [{ roupaQ: true, modeloCamisa: 'regata', calcaLisa: true, pele: '#8f5530', camisa: '#0f7a6a', calca: '#c88a0a', short: true, shortAte: 0.85, estilo: 'moicano', crista: 1.7, laterais: '#3a2416', sobrancelhaEscura: true, cristaCheia: true, cabelo: '#e0b012', brincos: '#c8ccd2', bocaPintada: 'sorrisao', bravo: true, larg: 0.85 },
               { roupaQ: true, modeloCamisa: 'colete', calcaLisa: true, pele: '#c68a5a', camisa: '#a8286a', calca: '#222', short: true, shortAte: 0.85, estilo: 'bandana', faixaCabeca: '#c8327e', modeloSapato: 'chinelo', sapato: '#c8327e', bravo: true, larg: 0.85 },
-              { roupaQ: true, modeloCamisa: 'moletom', calcaLisa: true, pele: '#6e4428', camisa: '#d8a810', calca: '#1f4fd8', short: true, shortAte: 0.85, estilo: 'bone', corBone: '#19963e', sorriso: true, bravo: true, larg: 0.85, sapato: '#f4f1e8', modeloSapato: 'tenis' },
+              { roupaQ: true, modeloCamisa: 'moletom', calcaLisa: true, pele: '#6e4428', camisa: '#d8a810', calca: '#1f4fd8', short: true, shortAte: 0.85, estilo: 'bone', boneCurvo: true, corBone: '#19963e', bocaPintada: 'sorrisao', bravo: true, larg: 0.85, sapato: '#f4f1e8', modeloSapato: 'tenis' },
               // o playboy contratado pelo bando: camisa polo, bermuda e topete
-              { roupaQ: true, modeloCamisa: 'camiseta', calcaLisa: true, pele: '#f0c8a6', camisa: '#e8609e', calca: '#d8c8a0', short: true, estilo: 'topete', cabelo: '#c9a050', oculos: true, bravo: true, larg: 0.85, sapato: '#8a5a32', modeloSapato: 'sapato', manga: true, mangaAte: 0.45 }]
+              { roupaQ: true, modeloCamisa: 'camiseta', calcaLisa: true, pele: '#f0c8a6', camisa: '#e8609e', calca: '#d8c8a0', short: true, estilo: 'topete', cabelo: '#c9a050', oculos: true, bravo: true, bocaPintada: 'torto', larg: 0.85, sapato: '#8a5a32', modeloSapato: 'sapato', manga: true, mangaAte: 0.45 }]
   },
   brutamontes: {
     hp: 85, vel: 1.7, golpes: ['socao'], pontos: 300, armadura: true, reacao: [0.5, 1.1],
@@ -5952,9 +6297,9 @@ Object.assign(DB.inimigos, {
     // 2º camiseta vinho + calça cargo de obra (joelheiras) verde-oliva no coturno. O 3º, sem camisa, fica na casca
     // (calça modelada sem camisa mostra dentes claros na cintura; roupaQ 'camisa' nele só liga o calçado modelado).
     // Calçado modelado: coturno de cano baixo no 1º, bota de cano médio no 2º e no 3º
-    visuais: [{ roupaQ: true, modeloCamisa: 'regata', modeloCalca: 'jeans', pele: '#6b4226', camisa: '#1b1b1b', calca: '#4b5320', estampaCalca: 'camuflado', estilo: 'careca', oculos: true, corrente: true, corCorrente: '#c8ccd2', bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', modeloSapato: 'coturno', larg: 1.3, escala: 1.22, barriga: 1.1 },
-              { roupaQ: true, modeloCamisa: 'camiseta', modeloCalca: 'obra', pele: '#c08050', camisa: '#5e1616', calca: '#4b5320', estilo: 'careca', barba: true, corrente: true, bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', modeloSapato: 'bota', larg: 1.3, escala: 1.22 },
-              { roupaQ: 'camisa', pele: '#4a2c1a', semCamisa: true, camisa: '#4a2c1a', calca: '#3b3b3b', estampaCalca: 'camuflado', estilo: 'careca', cabelo: '#111', barba: true, corrente: true, bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', modeloSapato: 'bota', larg: 1.3, escala: 1.22 }]
+    visuais: [{ roupaQ: true, modeloCamisa: 'regata', modeloCalca: 'jeans', pele: '#6b4226', camisa: '#1b1b1b', calca: '#4b5320', estampaCalca: 'camuflado', estilo: 'careca', oculos: true, corrente: true, corCorrente: '#c8ccd2', bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', modeloSapato: 'coturno', massaQ: 0.5, larg: 1.3, escala: 1.22, barriga: 1.1 },
+              { roupaQ: true, modeloCamisa: 'camiseta', modeloCalca: 'obra', pele: '#c08050', camisa: '#5e1616', calca: '#4b5320', estilo: 'careca', barba: true, corrente: true, bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', modeloSapato: 'bota', massaQ: 0.5, larg: 1.3, escala: 1.22 },
+              { roupaQ: 'camisa', pele: '#4a2c1a', semCamisa: true, camisa: '#4a2c1a', calca: '#3b3b3b', estampaCalca: 'camuflado', estilo: 'careca', cabelo: '#111', barba: true, corrente: true, bravo: true, sapato: '#2a2a2a', sola: '#2a2a2a', modeloSapato: 'bota', massaQ: 0.5, larg: 1.3, escala: 1.22 }]
   },
   coqueiro: {
     hp: 30, vel: 2.7, golpes: ['arremesso'], pontos: 200, distante: true, reacao: [1.3, 2.2],
@@ -5963,8 +6308,8 @@ Object.assign(DB.inimigos, {
     // pé descalço. Camisa modelada estampada (roupaQ 'camisa': a havaiana sai nítida, mas a gola fecha) e a bermuda lisa
     // na casca (a moderna tem listras brancas e dentes na barra). 2º: a camisa florida aberta no peito (casca, golaAberta);
     // 3º: colete florido modelado por cima da camiseta branca
-    visuais: [{ roupaQ: true, modeloCamisa: 'camiseta', calcaLisa: true, pele: '#9a6038', camisa: '#18682a', estampaCamisa: 'havaiana', manga: true, mangaAte: 0.55, calca: '#cfc0a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', cabelo: '#141010', sorriso: true, bravo: true },
-              { pele: '#6e4428', camisa: '#2a78b8', estampaCamisa: 'floral', camisaSolta: true, golaAberta: true, manga: true, mangaAte: 0.55, calca: '#d8d8d0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', sorriso: true, bravo: true },
+    visuais: [{ roupaQ: true, modeloCamisa: 'camiseta', calcaLisa: true, pele: '#9a6038', camisa: '#18682a', estampaCamisa: 'havaiana', manga: true, mangaAte: 0.55, calca: '#cfc0a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', cabelo: '#141010', bocaPintada: 'sorrisao', bravo: true },
+              { pele: '#6e4428', camisa: '#2a78b8', estampaCamisa: 'floral', camisaSolta: true, golaAberta: true, manga: true, mangaAte: 0.55, calca: '#d8d8d0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', bocaPintada: 'sorrisao', bravo: true },
               { roupaQ: true, modeloCamisa: 'colete', calcaLisa: true, pele: '#c48a5e', camisa: '#d0681a', estampaCamisa: 'floral', manga: true, mangaAte: 0.55, calca: '#d8c8a0', short: true, shortAte: 0.9, estilo: 'palha', corChapeu: '#b8862e', barba: true, cabelo: '#5a3a22', bravo: true }]
   },
   // ---- cachorro (quadrúpede: modelo próprio em motor/modelo.js → montarCao) ----
@@ -5980,15 +6325,17 @@ Object.assign(DB.inimigos, {
   bigorna: {   // Cap. 1 · Vitória
     chefe: true, nome: 'BIGORNA', curto: 'Bigorna', emoji: '🔨', cor: '#8a8f98',
     hp: 260, vel: 2.2, golpes: ['socao', 'soco', 'investida', 'investida'], pontos: 3000, armadura: true, reacao: [0.45, 0.95],
-    // roupa modelada: camiseta preta e calça cargo (obra, com joelheira) camuflada larga por cima da bota preta modelada
-    visuais: [{ roupaQ: true, modeloCalca: 'obra', pele: '#74462a', camisa: '#1b1b1b', manga: true, mangaAte: 0.55, calca: '#4b5320', estampaCalca: 'camuflado', calcaLarga: 0.8, sapato: '#1b1b1b', sola: '#111111', modeloSapato: 'bota', estilo: 'careca', barba: true, cabelo: '#111', corrente: true, corCorrente: '#c99a2e', bravo: true, musculo: 1.25, larg: 1.45, escala: 1.4, barriga: 1.1 }]
+    // roupa modelada: camiseta preta e calça cargo (obra, com joelheira) camuflada larga por cima da bota preta modelada.
+    // Barba preta cheia e volumosa (barbaCheia) e corpo de brutamontes (massaQ: braço, ombro, trapézio e peito engrossados)
+    visuais: [{ roupaQ: true, modeloCalca: 'obra', pele: '#74462a', camisa: '#1b1b1b', manga: true, mangaAte: 0.55, calca: '#4b5320', estampaCalca: 'camuflado', calcaLarga: 0.8, sapato: '#1b1b1b', sola: '#111111', modeloSapato: 'bota', estilo: 'careca', barba: true, barbaCheia: 1, cabelo: '#111', corrente: true, corCorrente: '#c99a2e', bravo: true, musculo: 1.25, massaQ: 0.6, larg: 1.45, escala: 1.4, barriga: 1.1 }]
   },
   corrente: {   // Cap. 2 · Terceira Ponte
     chefe: true, nome: 'CORRENTE', curto: 'Corrente', emoji: '⛓️', cor: '#e8333a',
     hp: 280, vel: 3.1, golpes: ['correntada', 'correntada', 'investida', 'soco'], pontos: 3500, armadura: true, reacao: [0.35, 0.8],
     // camiseta preta de manga longa e colete de couro aberto (casca: não há colete modelado de mulher com manga longa) e a
-    // calça cargo modelada (modeloCalca 'militar': bolsos e joelheiras) enfiada na bota marrom modelada (militar, tiras na cor da sola)
-    visuais: [{ roupaQ: true, modeloCalca: 'militar', pele: '#8e5634', camisa: '#1a1a1a', manga: true, mangaLonga: true, colete: '#5a3422', calca: '#1c1a1a', calcaLarga: 0.7, cinto: '#2a1a12', sapato: '#5a3420', sola: '#2a1a12', modeloSapato: 'bota', estilo: 'bandana', rabo: true, cabelo: '#120c08', faixaCabeca: '#c4202a', oculos: true, brincos: '#b8bcc4', corrente: true, corCorrente: '#6a7078', pulseira: '#6e737b', feminino: true, sorriso: true, larg: 1.05, escala: 1.15 }]
+    // calça cargo modelada (modeloCalca 'militar': bolsos e joelheiras) enfiada na bota marrom modelada (militar, tiras na cor da sola).
+    // Corrente de moto enrolada no pulso direito (correnteNaMao), braços fortes (massaQ) e sorrisão pintado
+    visuais: [{ roupaQ: true, modeloCalca: 'militar', pele: '#8e5634', camisa: '#1a1a1a', manga: true, mangaLonga: true, colete: '#5a3422', calca: '#1c1a1a', calcaLarga: 0.7, cinto: '#2a1a12', sapato: '#5a3420', sola: '#2a1a12', modeloSapato: 'bota', estilo: 'bandana', rabo: true, cabelo: '#120c08', faixaCabeca: '#c4202a', oculos: true, brincos: '#b8bcc4', corrente: true, corCorrente: '#6a7078', pulseira: '#6e737b', pulseiraSo: 'esquerdo', correnteNaMao: '#7a8088', feminino: true, bocaPintada: 'sorrisao', massaQ: 0.3, larg: 1.05, escala: 1.15 }]
   },
   agulha: {   // Cap. 3 · Vila Velha
     chefe: true, nome: 'AGULHA', curto: 'Agulha', emoji: '🪡', cor: '#c77dff',
@@ -5997,7 +6344,7 @@ Object.assign(DB.inimigos, {
     // caindo, legging preta, sapatilha lilás (peito do pé de fora), cabelo puxado num coque alto com elástico e duas agulhas quase deitadas
     // Na casca: legging e blusa justa de gola alta são o próprio corpo pintado; não há blusa modelada de gola alta
     visuais: [{ pele: '#d4a882', camisa: '#2a1a2c', manga: true, mangaLonga: true, calca: '#151515', sapato: '#a46fd6', sola: '#7a4aa8', sapatilha: true, faixa: '#a46fd6', faixaLaco: true,
-      estilo: 'coque', agulhas: '#c0c4c8', elastico: '#3a2040', cabelo: '#0d0d0d', feminino: true, golaAlta: true, batom: '#6b3a5a', bravo: true, larg: 0.86, escala: 1.1 }]
+      estilo: 'coque', agulhas: '#c0c4c8', elastico: '#3a2040', cabelo: '#0d0d0d', feminino: true, golaAlta: true, batom: '#6b3a5a', delineado: '#1a0d14', bravo: true, larg: 0.86, escala: 1.1 }]
   },
   muralha: {   // Cap. 4 · Copacabana
     chefe: true, nome: 'MURALHA', curto: 'Muralha', emoji: '🧱', cor: '#d9734a',
@@ -6007,7 +6354,7 @@ Object.assign(DB.inimigos, {
     // Na casca (conferido 18/11/2026): a bermuda modelada estampada é curta, tem cós e 2 listras brancas na barra e, sem
     // camisa, mostra dentes na cintura e na barra. Tênis branco modelado
     visuais: [{ roupaQ: 'calca', modeloCalca: 'bermuda', calcaLisa: true, pele: '#a8643a', semCamisa: true, camisa: '#a8643a', calca: '#b85530', estampaCalca: 'hibisco', short: true, calcaLarga: 0.6, cordao: '#efe8dc', sapato: '#e8e8e8', modeloSapato: 'tenis',
-      estilo: 'moicano', cabelo: '#3a2214', oculos: true, corLente: '#1c2c44', corrente: true, corCorrente: '#7a8088', sorriso: true, musculo: 1.5, larg: 1.25, escala: 1.48 }]
+      estilo: 'moicano', cabelo: '#3a2214', oculos: true, corLente: '#1c2c44', corrente: true, corCorrente: '#7a8088', bocaPintada: 'sorrisao', musculo: 1.5, massaQ: 0.8, larg: 1.25, escala: 1.48 }]
   },
   navalha: {   // Cap. 5 · Morro
     chefe: true, nome: 'NAVALHA', curto: 'Navalha', emoji: '🥷🏿', cor: '#e8333a',
@@ -6021,7 +6368,7 @@ Object.assign(DB.inimigos, {
     invoca: { limiares: [0.66, 0.33], grupo: ['capanga', 'ligeiro', 'capanga'], grito: 'SEGURANÇAS!' },
     // paletó comprido com lapelas na casca (o terno modelado é curto e a gravata da casca vazava por baixo dele) e a calça
     // social modelada; sapato social modelado
-    visuais: [{ roupaQ: true, modeloCalca: 'social', pele: '#9a5e3a', camisa: '#f4f1e8', manga: true, mangaLonga: true, paleto: '#2c3040', gravata: '#a3202a', calca: '#2c3040', calcaLarga: 0.6, sapato: '#111', sola: '#111', modeloSapato: 'sapato', social: true, estilo: 'careca', barba: true, bigode: true, cabelo: '#7c7c7c', sobrancelhaEscura: true, luvaF: '#5c6169', bravo: true, musculo: 1.15, larg: 1.25, escala: 1.34, barriga: 1.05 }]
+    visuais: [{ roupaQ: true, modeloCalca: 'social', pele: '#9a5e3a', camisa: '#f4f1e8', manga: true, mangaLonga: true, paleto: '#2c3040', gravata: '#a3202a', calca: '#2c3040', calcaLarga: 0.6, sapato: '#111', sola: '#111', modeloSapato: 'sapato', social: true, estilo: 'careca', barba: true, barbaCheia: 0.6, cabelo: '#7c7c7c', sobrancelhaEscura: true, luvaF: '#5c6169', bravo: true, musculo: 1.15, massaQ: 0.45, larg: 1.25, escala: 1.34, barriga: 1.05 }]
   }
 });
 
@@ -6035,70 +6382,77 @@ Object.assign(DB.inimigos, {
 Object.assign(DB.personagens, {
   narrador:   { nome: 'NARRADOR', emoji: '📻', cor: '#9aa3b5' },
   // terno azul-marinho modelado (roupaQ 'social': paletó com lapelas, camisa branca e gravata azul royal; calça social),
-  // sapato social preto modelado, cabelo grisalho curto penteado para trás, bigode grisalho cheio, sobrancelha escura, mãos para trás
+  // sapato social preto modelado, cabelo grisalho claro curto penteado para trás, bigode cheio em V de grisalho mais escuro, sobrancelha escura,
+  // rugas de 50 e poucos anos e sorriso de boca fechada escondido no bigode (rosto pintado), mãos para trás
   governador: { nome: 'GOVERNADOR ALTAIR', emoji: '🥋', cor: '#3a8fe8', pose: 'maosAtras',
     visual: { roupaQ: true, modeloCamisa: 'social', modeloCalca: 'social', pele: '#a5673e', camisa: '#1f2f5c', gravata: '#1c4fc4', calca: '#1f2f5c', sapato: '#111', sola: '#111', modeloSapato: 'sapato', social: true,
-      estilo: 'curto', cabelo: '#8f8f8f', sobrancelhaEscura: true, bigode: true, musculo: 1.1, larg: 1.1, barriga: 1.08 } },
+      estilo: 'curto', cabelo: '#a8a8a8', sobrancelhaEscura: true, bigode: 'cheio', corBigode: '#5e5e5e', rugas: 0.6, bocaPintada: 'fechado', musculo: 1.1, larg: 1.1, barriga: 1.08 } },
   mestre:     { nome: 'MESTRE ADO', emoji: '🧓🏿', cor: '#d9b44a' },
   // Espírito Santo
   theo:       { nome: 'THÉO', emoji: '📷', cor: '#5fc8e8' },
   // camisa de botão laranja de zigue-zague e coqueiros (solta, gola aberta com a camiseta branca de baixo), barrigão, calça cargo
-  // oliva larga, tênis bege, boné laranja, bigodão, luvas sem dedos pretas, fones no pescoço; cadeira preta de tubos laranja e adesivos.
+  // oliva larga, tênis bege, boné laranja acima das sobrancelhas com o crespo escapando dos lados e atrás, bigodão, sorrisão de dentes
+  // (pintado no rosto), luvas sem dedos pretas, fones no pescoço; cadeira preta de tubos laranja e adesivos.
   // Na casca (conferido 18/11/2026 com a camiseta modelada estampada e de pança): a modelada fecha a gola e some a camiseta
   // branca do V, que é o que mais marca a foto; a calça cargo modelada (obra) põe joelheira marrom e a social fica fina sentada
   beto:      { nome: 'BETO DO RÁDIO', emoji: '🧑🏽‍🦽', cor: '#ffb347',
     visual: { pele: '#8f5a36', camisa: '#d9600f', estampaCamisa: 'tribal', manga: true, mangaAte: 0.5, camisaSolta: true, golaAberta: true, camisetaDentro: '#ece6d6',
       calca: '#4a4f2c', calcaLarga: 0.6, sapato: '#cbbf9f', sola: '#efe9dc',
-      estilo: 'bone', corBone: '#e06a12', cabelo: '#2e2a28', bigode: 'grosso', sorriso: true, barriga: 1.4, barrigao: 1, larg: 1.25, foneNoPescoco: '#3a3d2a', segura: 'radio', luva: '#262626',
+      estilo: 'bone', corBone: '#e06a12', boneSobe: 0.04, cachosSobBone: true, cabelo: '#2e2a28', bigode: 'grosso', bocaPintada: 'riso', rugas: 0.4, barriga: 1.4, barrigao: 1, larg: 1.25, foneNoPescoco: '#3a3d2a', segura: 'radio', luva: '#262626',
       cadeira: true, corCadeira: '#222226', corTubo: '#e06a12', adesivos: true, antenaCadeira: true } },
   taina:      { nome: 'TAINÁ', emoji: '✊🏾', cor: '#e8333a' },
   // camiseta verde modelada (roupaQ; dois tons abaixo da foto: a peça lisa sai mais viva), bermuda cinza-chumbo lisa acima do
   // joelho (a do camponês: a moderna tem listras brancas) com bolso cargo, descalço, cabelo preto liso com franja, colar de
-  // contas escuras com sementes claras e pingente, remo de madeira apoiado no ombro
+  // contas escuras com sementes claras e pingente (rente ao pescoço), remo de madeira apoiado no ombro, meio sorriso de canto
   kaue:       { nome: 'KAUÊ', emoji: '🛶', cor: '#3fbf6a', pose: 'remo',
     visual: { roupaQ: true, modeloCamisa: 'camiseta', modeloCalca: 'bermuda', calcaLisa: true, pele: '#9a5a32', camisa: '#24703a', manga: true, mangaAte: 0.6, camisaSolta: true, calca: '#2e2e33', short: true, shortAte: 0.8, bolsos: true,
-      estilo: 'franja', cabelo: '#0d0d0d', colar: '#1e1a18', sementes: '#e2cca2', segura: 'remo', larg: 0.92 } },
-  // regata rosa (casca: a regata funda fica no qCorte), bermuda cargo oliva modelada (roupaQ; a do camponês, lisa) com cinto marrom, tênis azul-marinho de sola branca (o do Rig: o tênis modelado de mulher é de uma cor só, sem a sola branca), quepe branco de capitã com âncora e
-  // óculos escuros na faixa, trança castanha pelo ombro, argolas prateadas, apito, gargalhada; aponta com a outra mão na cintura
+      estilo: 'franja', cabelo: '#0d0d0d', colar: '#1e1a18', sementes: '#e2cca2', segura: 'remo', bocaPintada: 'torto', larg: 0.92 } },
+  // regata rosa (casca: a regata funda fica no qCorte), bermuda cargo oliva modelada (roupaQ; a do camponês, lisa) com cinto marrom, tênis azul-marinho de sola branca (modelado: desde 18/11 o de mulher ganha a sola de outra cor), quepe branco de capitã com âncora e
+  // óculos escuros na faixa, trança castanha pelo ombro e cabelo ondulado cheio dos lados do rosto, argolas prateadas, apito,
+  // gargalhada de boca aberta (pintada no rosto); aponta com a outra mão na cintura
   rafaela:    { nome: 'RAFAELA', emoji: '⚓', cor: '#ff7ab8', pose: 'apontando',
     visual: { roupaQ: true, pele: '#a8683e', camisa: '#d8478c', regata: true, calca: '#5a5636', short: true, shortAte: 0.8, bolsos: true, cinto: '#4a2e1a',
-      sapato: '#1f2a44', sola: '#f4f1e8', modeloSapato: 'rig', estilo: 'tranca', cabelo: '#4a2a14', elastico: '#7a3a5a', capita: true, oculosChapeu: true,
-      brincos: '#c8ccd2', apito: true, sorriso: true, feminino: true, musculo: 1.1, larg: 1.08 } },
+      sapato: '#1f2a44', sola: '#f4f1e8', modeloSapato: 'tenis', estilo: 'tranca', cabelo: '#4a2a14', elastico: '#7a3a5a', capita: true, oculosChapeu: true,
+      mechasRosto: true, brincos: '#c8ccd2', apito: true, bocaPintada: 'riso', feminino: true, musculo: 1.1, larg: 1.08 } },
   // Rio de Janeiro
   // camiseta lilás com o logo do podcast, short jeans claro, meia branca, tênis branco e lilás, dois puffs crespos, fone gigante
-  // lilás, sorrisão; pau de selfie erguido. Sem roupaQ: o short feminino modelado é o do camponês e cruza com a camiseta
+  // lilás, sorrisão; pau de selfie erguido. Tênis modelado (roupaQ 'pes': branco de sola lilás); roupa sem roupaQ: o short feminino modelado é o do camponês e cruza com a camiseta
   // moderna na cintura (manchas lilás no quadril) — volta quando houver short feminino moderno
   lalinha:    { nome: 'LALINHA', emoji: '🎧', cor: '#c77dff', pose: 'selfie',
     visual: { pele: '#8a5530', camisa: '#a46fd6', manga: true, mangaAte: 0.6, logoPodcast: true, calca: '#6f8fc0', short: true, shortAte: 0.45,
-      meiao: '#f4f1e8', meiaoDe: 0.85, sapato: '#f4f1e8', sola: '#b77ef0', estilo: 'puffs', cabelo: '#2a1a10', foneCabeca: '#a46fd6', segura: 'selfie',
-      sorriso: true, feminino: true, escala: 0.62, cabecaEsc: 1.0, larg: 0.85 } },
+      meiao: '#f4f1e8', meiaoDe: 0.85, roupaQ: 'pes', modeloSapato: 'tenis', sapato: '#f4f1e8', sola: '#b77ef0', estilo: 'puffs', cabelo: '#2a1a10', foneCabeca: '#a46fd6', segura: 'selfie',
+      bocaPintada: 'riso', feminino: true, escala: 0.62, cabecaEsc: 1.0, larg: 0.85 } },
   // pose (opcional): postura do figurante em pé (motor/figurantes.js → POSES_FIGURANTE)
   cida:       { nome: 'DONA CIDA', emoji: '👵🏾', cor: '#ff9f43', pose: 'travessa',
     // cores um tom abaixo da foto: a luz toon clareia e satura (lenço laranja forte, blusa malva modelada (roupaQ), saia ameixa até o meio da canela,
-    // perna de fora, avental creme de flores laranja e vermelhas, óculos de aro dourado fino, chinelo de dedo)
+    // perna de fora, avental creme de flores laranja e vermelhas, óculos de aro dourado fino, chinelo de dedo; cabelo crespo grisalho
+    // em volume atrás e dos lados; rugas de senhora e meio sorriso torto de boca fechada, pintados no rosto)
     visual: { roupaQ: true, pele: '#6b3f22', camisa: '#6e3a5c', manga: true, mangaAte: 0.5, calca: '#6b3f22', saia: '#3e1f36', saiaAte: 0.5, avental: '#e2cca2', estampaAvental: 'florido',
       faixa: '#e8d4a0', chinelo: '#efe6cf', estilo: 'lenco', corLenco: '#e8650f', cabelo: '#8a8a8a', oculos: 'grau', oculosPonta: true, corLente: '#b08060', corAro: '#9a7a3a', sobrancelhaEscura: true,
-      brincos: '#e8b830', segura: 'travessa', feminino: true, busto: 1.25, barriga: 1.35, larg: 1.2, escala: 0.9, bravo: true } },
+      brincos: '#e8b830', segura: 'travessa', rugas: 1, bocaPintada: 'torto', feminino: true, busto: 1.25, barriga: 1.35, larg: 1.2, escala: 0.9, bravo: true } },
   josue:      { nome: 'IRMÃO JOSUÉ', emoji: '📖', cor: '#4f86c6' },
   // tudo branco-gelo: turbante alto de pano, bata solta, saia rodada até o tornozelo com a faixa amarrada do lado; guias longas
-  // vermelhas, brancas e azuis até a barriga, argolas grandes prateadas, pulseira no pulso esquerdo, chinelo branco; ervas erguidas.
+  // vermelhas, brancas, azuis e coral até a barriga (5 fios de contas encostadas), argolas grandes e grossas prateadas, pulseira no
+  // pulso esquerdo, chinelo branco; ervas erguidas ao lado da cabeça; rugas leves e sorriso de boca fechada.
   // Sem roupaQ: o vestido modelado é curto e sem manga, e a camiseta não faz a bata larga de manga até o cotovelo
   iara:      { nome: 'MÃE IARA', emoji: '🌿', cor: '#f2efe6', pose: 'benzendo',
     visual: { pele: '#7a4526', camisa: '#ece6d6', manga: true, camisaSolta: true, calca: '#7a4526', saia: '#ece6d6', saiaAte: 0.92, faixa: '#ece6d6', faixaLaco: true,
       chinelo: '#ece6d6', estilo: 'turbante', corTurbante: '#ece6d6', guias: true, guiasLongas: true, brincos: '#d8d8d8', argolaGrande: true,
-      pulseira: '#d8d8d8', pulseiraSo: 'esquerdo', segura: 'ervas', feminino: true, escala: 1.03, larg: 1.05 } },
+      pulseira: '#d8d8d8', pulseiraSo: 'esquerdo', segura: 'ervas', rugas: 0.4, bocaPintada: 'fechado', feminino: true, escala: 1.03, larg: 1.05 } },
   davi:       { nome: 'PASTORZINHO DAVI', emoji: '🙏🏾', cor: '#ffd21f', pose: 'pregando',
     // camisa amarela com botões (camiseta modelada, roupaQ), gravata-borboleta preta grande, calça social preta modelada com cinto, tênis branco modelado;
-    // gargalhada banguela de olhos fechados, cabeça de criança (cabecaEsc > 1: maior)
+    // Bíblia abraçada no peito, de capa para a frente; gargalhada banguela de olhos fechados pintada no rosto (as peças na frente da boca saíam como bico), cabeça de criança (cabecaEsc > 1: maior)
     visual: { roupaQ: true, modeloCalca: 'social', pele: '#6b3f22', camisa: '#e8c21a', manga: true, camisaSolta: true, borboleta: '#141010', botoes: '#c9a010', calca: '#1b1b1b', calcaLarga: 0.6, cinto: '#141010',
-      sapato: '#f4f1e8', sola: '#f4f1e8', modeloSapato: 'tenis', estilo: 'raspado', cabelo: '#141010', riso: true, banguela: true, olhosFechados: true, segura: 'biblia',
+      sapato: '#f4f1e8', sola: '#f4f1e8', modeloSapato: 'tenis', estilo: 'raspado', cabelo: '#141010', bocaPintada: 'riso', banguela: true, olhosPintados: 'fechados', segura: 'biblia', bibliaPeito: true,
       escala: 0.6, cabecaEsc: 1.08, larg: 0.9 } },
-  // vestido longo de paetê rosa com fenda, luvas longas, salto plataforma, peruca loira volumosa com coroa. Sem roupaQ: o vestido
+  // vestido longo de paetê rosa com fenda, luvas longas, salto plataforma, peruca loira volumosa de ondas compridas com tiara de
+  // pedras pink, sombra pink e delineado, sobrancelha escura, colar rente com pingente pink, leque plissado ao lado do rosto. Sem roupaQ: o vestido
   // modelado é curto e liso (perde o paetê)
   kika:       { nome: 'KIKA DIAMANTE', emoji: '👑', cor: '#ff3dc8', pose: 'leque',
     visual: { pele: '#c58a5a', camisa: '#ff3dc8', estampaCamisa: 'paete', calca: '#ff3dc8', estampaCalca: 'paete', saia: '#ff3dc8', estampaSaia: 'paete',
       sapato: '#ff3dc8', sola: '#c0157a', luvaLonga: '#e0218a', segura: 'leque', corLeque: '#ff4fc0',
-      estilo: 'peruca', cabelo: '#f2dfa0', coroa: '#eef0ff', corPedra: '#ff3dc8', colar: '#eef0ff', brincos: '#eef0ff', batom: '#d4147a',
+      estilo: 'peruca', cabelo: '#f2dfa0', coroa: '#eef0ff', corPedra: '#ff3dc8', colar: '#eef0ff', pingente: '#ff3dc8', brincos: '#eef0ff', batom: '#d4147a',
+      sobrancelhaEscura: true, sombra: '#c0157a', delineado: '#141010', bocaPintada: 'sorriso',
       feminino: true, busto: 1.3, larg: 1.1, escala: 1.12 } },
   ariel:      { nome: 'ARIEL', emoji: '💻', cor: '#7dff6a' },
   capanga:    { nome: 'CAPANGA', emoji: '😠', cor: '#e8333a' },
